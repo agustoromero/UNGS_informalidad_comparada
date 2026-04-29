@@ -1,0 +1,89 @@
+#################################################
+# 📦 DATA PESADA (CRÍTICO PARA TU CASO)
+#################################################
+
+data/
+*.dta
+*.rds
+*.csv
+*.sav
+*.zip
+*.rar
+
+# Excepciones si querés (opcional):
+# !data/metadata/
+# !data/diccionarios/
+
+#################################################
+# 🐍 PYTHON
+#################################################
+
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+#################################################
+# 📊 R PROJECT
+#################################################
+
+.Rhistory
+.RData
+.Ruserdata
+.Rproj.user/
+*.Rproj
+
+#################################################
+# 📁 SISTEMA / WINDOWS / ONEDRIVE
+#################################################
+
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# OneDrive conflictos
+~$*
+*.tmp
+
+#################################################
+# 📦 LOGS / OUTPUTS
+#################################################
+
+*.log
+*.out
+*.bak
+
+#################################################
+# 📓 NOTEBOOKS / CACHE
+#################################################
+
+.ipynb_checkpoints/
+
+#################################################
+# 📂 SUBREPOS (MUY IMPORTANTE)
+#################################################
+
+
+precariedad.mundial/Bases/
+precariedad.mundial/Bases_*
+precariedad.mundial/**/Bases/
+precariedad.mundial/**/Bases_*/
+
+
+#################################################
+# 🚨 CASOS ESPECÍFICOS TUYOS
+#################################################
+
+eph y biblio/
+#################################################
+# 💡 EXCEPCIÓN (LO QUE SÍ QUERÉS VERSIONAR)
+#################################################
+
+!scripts_proyecto_eph/
+!*.R
+!*.Rmd
+!metadata/
+!diccionarios/
