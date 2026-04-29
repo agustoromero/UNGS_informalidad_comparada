@@ -1,0 +1,9 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+.dat
+Bases/
+Bases_homog/
+scripts_articulos/
+base_homogenea.RDS
