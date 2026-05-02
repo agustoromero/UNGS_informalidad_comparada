@@ -31,7 +31,11 @@ def apply_weights(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def export_data(df: pd.DataFrame) -> None:
+ codex/design-operational-instructions-for-codex-t2iug8
+    out = Path("outputs/harmonized") / f"{COUNTRY}_{YEAR}.parquet"
+
     out = Path("outputs/harmonized") / f"{c}_{y}.parquet"
+main
     out.parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(out, index=False)
 

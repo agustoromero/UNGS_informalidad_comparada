@@ -56,3 +56,4 @@ Las equivalencias de variables y reglas extraídas de esos scripts están docume
 
 Para ejecución local en Windows, usar sincronización de datos en:
 `C:\Users\agusr\OneDrive\repos\UNGS_informalidad_comparada\data\...`
+
