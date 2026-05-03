@@ -57,3 +57,11 @@ Las equivalencias de variables y reglas extraídas de esos scripts están docume
 Para ejecución local en Windows, usar sincronización de datos en:
 `C:\Users\agusr\OneDrive\repos\UNGS_informalidad_comparada\data\...`
 
+
+## Orden de ejecución recomendado
+
+1. Ejecutar cada script país-año (por ejemplo `python scripts/argentina/argentina_2018.py`).
+2. Ejecutar armonización consolidada: `python scripts/harmonization/build_harmonized.py`.
+3. Ejecutar validaciones: `python scripts/checks/run_checks.py`.
+
+Nota: cada script país-año exporta `outputs/harmonized/<COUNTRY>_<YEAR>.parquet`.
