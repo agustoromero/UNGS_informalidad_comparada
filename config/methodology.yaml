@@ -1,0 +1,27 @@
+baseline:
+  reference_country: argentina
+  reference_logic: argentina_estructura
+
+comparability:
+  strict: true
+  non_comparable_policy:
+    - drop_variable
+    - log_decision
+
+country_notes:
+  brasil:
+    source: "PNAD Contínua"
+    key_points:
+      - "leer archivos .txt PNADC_*"
+      - "no modificar ponderadores"
+      - "respetar diseño rotativo"
+  mexico:
+    source: "ENOE"
+    key_points:
+      - "unir COE1 y COE2"
+      - "crear flag metodologia: pre_ENOE / ENOE_nueva"
+  colombia:
+    source: "GEIH"
+    key_points:
+      - "agregar meses a trimestre calendario"
+      - "sumar numeradores y denominadores"
