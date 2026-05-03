@@ -1,0 +1,28 @@
+core_variables:
+  - pais
+  - anio
+  - trimestre
+  - id
+  - ponderador
+
+  - ocupado
+  - desocupado
+  - inactivo
+
+  - asalariado
+  - cuentapropia
+
+  - formal
+  - informal
+
+  - sector
+
+rules:
+  ocupado:
+    definition: "criterio armonizado tipo EPH"
+
+  informal:
+    definition: "criterio híbrido basado en argentina_estructura"
+
+  ponderador:
+    rule: "usar sin modificar en todos los países"
