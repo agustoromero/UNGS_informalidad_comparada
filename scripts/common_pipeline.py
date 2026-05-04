@@ -52,43 +52,24 @@ def load_period(country: str, src):
 
 
 def build_core(country: str, year: int, trimestre: int, df: pd.DataFrame) -> pd.DataFrame:
-    out = pd.DataFrame(index=df.index)
-    out["pais"] = country
-    out["anio"] = year
-    out["trimestre"] = trimestre
+    out = pd.DataFrame()
+    out["pais"] = country; out["anio"] = year; out["trimestre"] = trimestre
     if country == "argentina":
-        id_series = df["CODUSU"].astype(str)+"_"+df["NRO_HOGAR"].astype(str)+"_"+df["COMPONENTE"].astype(str)
-        out["ponderador"] = df["PONDERA"]
-        estado = df["ESTADO"]
-        cat = df["CAT_OCUP"]
-        reg_no = df["PP07H"].eq(2)
-        small = df.get("PP04C", pd.Series(False,index=df.index)).isin([1,2,3,4,5,6])
+        df["id"] = df["CODUSU"].astype(str)+"_"+df["NRO_HOGAR"].astype(str)+"_"+df["COMPONENTE"].astype(str)
+        out["ponderador"] = df["PONDERA"]; estado = df["ESTADO"]; cat = df["CAT_OCUP"]; reg_no = df["PP07H"].eq(2); small = df.get("PP04C", pd.Series(False,index=df.index)).isin([1,2,3,4,5,6])
     elif country == "brasil":
-        id_series = df[[c for c in ["UPA","V1008","V1014","V2003"] if c in df.columns]].astype(str).agg("_".join, axis=1)
-        out["ponderador"] = df["V1028"]
-        estado = df.get("VD4002","")
-        cat = df.get("VD4009","")
-        reg_no = cat.astype(str).str.contains("sem carteira",na=False)
-        small = df.get("V4018","").isin(["1 a 5 pessoas","6 a 10 pessoas"])
+        df["id"] = df[[c for c in ["UPA","V1008","V1014","V2003"] if c in df.columns]].astype(str).agg("_".join, axis=1)
+        out["ponderador"] = df["V1028"]; estado = df.get("VD4002",""); cat = df.get("VD4009",""); reg_no = cat.astype(str).str.contains("sem carteira",na=False); small = df.get("V4018","").isin(["1 a 5 pessoas","6 a 10 pessoas"])
     elif country == "mexico":
-        id_series = df[MERGE_KEYS_MX].astype(str).agg("_".join, axis=1)
+        df["id"] = df[MERGE_KEYS_MX].astype(str).agg("_".join, axis=1)
         w = "fac" if "fac" in df.columns else "FAC"
-        out["ponderador"] = df[w]
-        estado = df.get("clase2",0)
-        cat = df.get("pos_ocu",-1)
-        reg_no = df.get("p3j",0).eq(2)
-        small = df.get("emple7c",99).isin([1,2,3])
+        out["ponderador"] = df[w]; estado = df.get("clase2",0); cat = df.get("pos_ocu",-1); reg_no = df.get("p3j",0).eq(2); small = df.get("emple7c",99).isin([1,2,3])
     else:
-        keys=["DIRECTORIO","SECUENCIA_P","ORDEN","HOGAR"]
-        id_series = df[keys].astype(str).agg("_".join, axis=1)
+        keys=["DIRECTORIO","SECUENCIA_P","ORDEN","HOGAR"]; df["id"] = df[keys].astype(str).agg("_".join, axis=1)
         w = next(c for c in ["fex_c_2011","FEX_C_2011","fexp","FEXP"] if c in df.columns)
-        out["ponderador"] = df[w]
-        estado = df.get("OCI",1)
-        cat = df.get("P6430",-1)
-        reg_no = ~((df.get("P6440",0)==1)&(df.get("P6450",0)==2))
-        small = df.get("P6870",99).isin([1,2,3,4])
+        out["ponderador"] = df[w]; estado = df.get("OCI",1); cat = df.get("P6430",-1); reg_no = ~((df.get("P6440",0)==1)&(df.get("P6450",0)==2)); small = df.get("P6870",99).isin([1,2,3,4])
 
-    out["id"] = id_series
+    out["id"] = df["id"]
     out["ocupado"] = (estado.eq(1) if hasattr(estado,'eq') else (estado=="Pessoas ocupadas")).astype(int)
     out["desocupado"] = (estado.eq(2) if hasattr(estado,'eq') else (estado=="Pessoas desocupadas")).astype(int)
     out["inactivo"] = 1 - out["ocupado"] - out["desocupado"]
