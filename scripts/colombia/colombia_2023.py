@@ -1,3 +1,7 @@
+from scripts.common_pipeline import run_country_year
+
+if __name__ == "__main__":
+    run_country_year("colombia", 2023)
 """Pipeline colombia 2023.
 
 Baseline conceptual: argentina_estructura.
