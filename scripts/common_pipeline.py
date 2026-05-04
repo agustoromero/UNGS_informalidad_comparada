@@ -52,7 +52,7 @@ def load_period(country: str, src):
 
 
 def build_core(country: str, year: int, trimestre: int, df: pd.DataFrame) -> pd.DataFrame:
-    out = pd.DataFrame()
+    out = pd.DataFrame(index=df.index)
     out["pais"] = country; out["anio"] = year; out["trimestre"] = trimestre
     if country == "argentina":
         df["id"] = df["CODUSU"].astype(str)+"_"+df["NRO_HOGAR"].astype(str)+"_"+df["COMPONENTE"].astype(str)
