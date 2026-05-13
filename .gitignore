@@ -87,3 +87,14 @@ eph y biblio/
 !*.Rmd
 !metadata/
 !diccionarios/
+
+outputs/raw_brasil/
+outputs/harmonized/*.parquet
+outputs/harmonized/*.csv
+__pycache__/
+*.pyc
+
+outputs/raw_brasil/*.parquet
+outputs/raw_brasil/*.csv
+outputs/harmonized/*.parquet
+outputs/harmonized/*.csv
