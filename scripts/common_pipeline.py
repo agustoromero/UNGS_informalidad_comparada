@@ -1,9 +1,20 @@
 from pathlib import Path
 import warnings
+
 import pandas as pd
 import pyreadr
 
-MERGE_KEYS_MX = ["cd_a", "ent", "con", "v_sel", "n_hog", "h_mud", "n_ren"]
+
+MERGE_KEYS_MX = [
+    "cd_a",
+    "ent",
+    "con",
+    "v_sel",
+    "n_hog",
+    "h_mud",
+    "n_ren",
+]
+
 
 COMMON_COLUMNS = [
     "pais",
@@ -27,6 +38,7 @@ COMMON_COLUMNS = [
 # =============================================================================
 
 def log(msg):
+
     print(f"[PIPELINE] {msg}")
 
 
@@ -36,39 +48,46 @@ def log(msg):
 
 def get_periods(country: str, year: int):
 
-    if country == "brasil":
+    # -------------------------------------------------------------------------
+    # ARGENTINA
+    # -------------------------------------------------------------------------
 
-     parquet = Path(
-        "outputs/raw_brasil/brasil_raw.parquet"
-     )
+    if country == "argentina":
 
-     if not parquet.exists():
-        raise FileNotFoundError(
-            "No existe brasil_raw.parquet"
-        )
+        base = Path("data/argentina")
 
-     return {
-        1: parquet,
-        2: parquet,
-        3: parquet,
-        4: parquet,
-    }
+        return {
+            int(f.stem.split("_T")[1]): f
+            for f in sorted(
+                base.glob(f"base_{year}_T*.rds")
+            )
+        }
 
-   
-
+    # -------------------------------------------------------------------------
+    # BRASIL
     # -------------------------------------------------------------------------
 
     if country == "brasil":
 
-        parquet = Path("outputs/raw_brasil/brasil_raw.parquet")
+        parquet = Path(
+            "outputs/raw_brasil/brasil_raw.parquet"
+        )
 
         if not parquet.exists():
+
             raise FileNotFoundError(
                 "No existe outputs/raw_brasil/brasil_raw.parquet"
             )
 
-        return {1: parquet}
+        return {
+            1: parquet,
+            2: parquet,
+            3: parquet,
+            4: parquet,
+        }
 
+    # -------------------------------------------------------------------------
+    # MEXICO
     # -------------------------------------------------------------------------
 
     if country == "mexico":
@@ -91,13 +110,22 @@ def get_periods(country: str, year: int):
             coe2 = list(folder.glob("*COE2*.csv"))
 
             if not coe1 or not coe2:
-                warnings.warn(f"Faltan archivos ENOE en {folder}")
+
+                warnings.warn(
+                    f"Faltan archivos ENOE en {folder}"
+                )
+
                 continue
 
-            periods[i] = (coe1[0], coe2[0])
+            periods[i] = (
+                coe1[0],
+                coe2[0],
+            )
 
         return periods
 
+    # -------------------------------------------------------------------------
+    # COLOMBIA
     # -------------------------------------------------------------------------
 
     if country == "colombia":
@@ -105,10 +133,15 @@ def get_periods(country: str, year: int):
         base = Path("data/colombia")
 
         months = sorted(
-            [p for p in base.glob("*") if p.is_dir()]
+            [
+                p
+                for p in base.glob("*")
+                if p.is_dir()
+            ]
         )
 
         if not months:
+
             raise FileNotFoundError(
                 "No se encontraron carpetas GEIH"
             )
@@ -122,12 +155,15 @@ def get_periods(country: str, year: int):
             block = months[i:i + 3]
 
             if len(block) < 3:
+
                 warnings.warn(
                     f"Trimestre incompleto Colombia: {block}"
                 )
+
                 continue
 
             periods[q] = block
+
             q += 1
 
         return periods
@@ -144,6 +180,8 @@ def get_periods(country: str, year: int):
 def load_period(country: str, src, year=None):
 
     # -------------------------------------------------------------------------
+    # ARGENTINA
+    # -------------------------------------------------------------------------
 
     if country == "argentina":
 
@@ -155,75 +193,166 @@ def load_period(country: str, src, year=None):
             )
         )
 
-     # -------------------------------------------------------------------------
+    # -------------------------------------------------------------------------
+    # BRASIL
+    # -------------------------------------------------------------------------
 
     if country == "brasil":
 
-     log("Leyendo Brasil parquet consolidado")
+        log("Leyendo Brasil parquet consolidado")
 
-    needed = [
-        "Ano",
-        "Trimestre",
-        "UPA",
-        "V1008",
-        "V1014",
-        "V2003",
-        "V1028",
-        "VD4002",
-        "VD4009",
-        "VD4012",
-        "V4018",
-    ]
+        needed = [
+            "Ano",
+            "Trimestre",
+            "UPA",
+            "V1008",
+            "V1014",
+            "V2003",
+            "V1028",
+            "VD4002",
+            "VD4009",
+            "VD4012",
+            "V4018",
+        ]
 
-    df = pd.read_parquet(
-        src,
-        columns=needed
-    )
+        df = pd.read_parquet(
+            src,
+            columns=needed,
+        )
 
-    df["Ano"] = df["Ano"].astype(int)
-    df["Trimestre"] = df["Trimestre"].astype(int)
+        df["Ano"] = (
+            pd.to_numeric(
+                df["Ano"],
+                errors="coerce",
+            )
+            .astype("Int64")
+        )
 
-    df = df[df["Ano"] == year].copy()
+        df["Trimestre"] = (
+            pd.to_numeric(
+                df["Trimestre"],
+                errors="coerce",
+            )
+            .astype("Int64")
+        )
 
-    log(
-        f"Brasil {year}: "
-        f"{df.shape[0]:,} filas"
-    )
+        df = df[
+            df["Ano"] == year
+        ].copy()
 
-    return df
+        log(
+            f"Brasil {year}: "
+            f"{df.shape[0]:,} filas"
+        )
+
+        return df
+
+    # -------------------------------------------------------------------------
+    # MEXICO
     # -------------------------------------------------------------------------
 
     if country == "mexico":
 
         log(f"Leyendo México: {src[0].name}")
 
-        a = pd.read_csv(src[0], low_memory=False)
-        b = pd.read_csv(src[1], low_memory=False)
+        a = pd.read_csv(
+            src[0],
+            low_memory=False,
+        )
 
-        dup_a = a.duplicated(MERGE_KEYS_MX).sum()
-        dup_b = b.duplicated(MERGE_KEYS_MX).sum()
+        b = pd.read_csv(
+            src[1],
+            low_memory=False,
+        )
+
+        dup_a = a.duplicated(
+            MERGE_KEYS_MX
+        ).sum()
+
+        dup_b = b.duplicated(
+            MERGE_KEYS_MX
+        ).sum()
 
         if dup_a > 0:
+
             warnings.warn(
                 f"Duplicados COE1: {dup_a}"
             )
 
         if dup_b > 0:
+
             warnings.warn(
                 f"Duplicados COE2: {dup_b}"
             )
-
         merged = a.merge(
-            b,
-            on=MERGE_KEYS_MX,
-            how="inner",
-            validate="many_to_many",
+         b,
+         on=MERGE_KEYS_MX,
+         how="inner",
+         validate="many_to_many",
+         )
+
+        # -------------------------------------------------------------
+        # SDEMT
+        # -------------------------------------------------------------
+
+        folder = src[0].parent
+
+        sdemt_files = list(
+         folder.glob("*SDEMT*.csv")
         )
 
-        log(f"México merged: {merged.shape}")
+        if sdemt_files:
+
+         sdemt = pd.read_csv(
+          sdemt_files[0],
+          low_memory=False,
+          encoding="latin1",
+         )
+
+         keep = [
+             c
+             for c in [
+                 *MERGE_KEYS_MX,
+                 "clase1",
+                 "clase2",
+                 "pos_ocu",
+                 "emp_ppal",
+                 "seg_soc",
+                 "tue_ppal",
+                 "medicasc",
+                 "fac",
+             ]
+             if c in sdemt.columns
+         ]
+
+         sdemt = sdemt[keep]
+
+         merged = merged.merge(
+             sdemt,
+             on=MERGE_KEYS_MX,
+             how="left",
+         )
+
+        else:
+         warnings.warn(
+         f"No se encontró SDEMT en {folder}"
+         )
+
+        log(
+            f"México merged: {merged.shape}"
+         )
+
+        na_share = merged[
+            ["clase2", "pos_ocu", "emp_ppal"]
+         ].isna().mean()
+
+        log(
+            f"NA shares SDEMT:\n{na_share}"
+         )
 
         return merged
-
+    # -------------------------------------------------------------------------
+    # COLOMBIA
     # -------------------------------------------------------------------------
 
     if country == "colombia":
@@ -232,21 +361,44 @@ def load_period(country: str, src, year=None):
 
         for m in src:
 
-            log(f"Leyendo Colombia: {m.name}")
+            log(
+                f"Leyendo Colombia: {m.name}"
+            )
 
-            car = list(m.rglob("*Caracter*csv"))
-            ft = list(m.rglob("*Fuerza*csv"))
-            ocu = list(m.rglob("*Ocup*csv"))
+            car = list(
+                m.rglob("*Caracter*csv")
+            )
+
+            ft = list(
+                m.rglob("*Fuerza*csv")
+            )
+
+            ocu = list(
+                m.rglob("*Ocup*csv")
+            )
 
             if not car or not ft or not ocu:
+
                 warnings.warn(
                     f"Archivos faltantes en {m}"
                 )
+
                 continue
 
-            cdf = pd.read_csv(car[0], low_memory=False)
-            fdf = pd.read_csv(ft[0], low_memory=False)
-            odf = pd.read_csv(ocu[0], low_memory=False)
+            cdf = pd.read_csv(
+                car[0],
+                low_memory=False,
+            )
+
+            fdf = pd.read_csv(
+                ft[0],
+                low_memory=False,
+            )
+
+            odf = pd.read_csv(
+                ocu[0],
+                low_memory=False,
+            )
 
             keys = [
                 "DIRECTORIO",
@@ -257,18 +409,30 @@ def load_period(country: str, src, year=None):
 
             tmp = (
                 cdf
-                .merge(fdf, on=keys, how="inner")
-                .merge(odf, on=keys, how="left")
+                .merge(
+                    fdf,
+                    on=keys,
+                    how="inner",
+                )
+                .merge(
+                    odf,
+                    on=keys,
+                    how="left",
+                )
             )
 
             parts.append(tmp)
 
         if not parts:
+
             raise ValueError(
                 "No se pudieron cargar meses Colombia"
             )
 
-        return pd.concat(parts, ignore_index=True)
+        return pd.concat(
+            parts,
+            ignore_index=True,
+        )
 
     # -------------------------------------------------------------------------
 
@@ -283,7 +447,7 @@ def build_core(
     country: str,
     year: int,
     trimestre: int,
-    df: pd.DataFrame
+    df: pd.DataFrame,
 ) -> pd.DataFrame:
 
     out = pd.DataFrame(index=df.index)
@@ -317,7 +481,10 @@ def build_core(
         small = (
             df.get(
                 "PP04C",
-                pd.Series(False, index=df.index)
+                pd.Series(
+                    False,
+                    index=df.index,
+                ),
             )
             .isin([1, 2, 3, 4, 5, 6])
         )
@@ -330,7 +497,12 @@ def build_core(
 
         df["id"] = (
             df[
-                ["UPA", "V1008", "V1014", "V2003"]
+                [
+                    "UPA",
+                    "V1008",
+                    "V1014",
+                    "V2003",
+                ]
             ]
             .astype(str)
             .agg("_".join, axis=1)
@@ -345,7 +517,7 @@ def build_core(
         reg_no = cat.str.contains(
             "sem carteira",
             case=False,
-            na=False
+            na=False,
         )
 
         small = (
@@ -353,6 +525,7 @@ def build_core(
             .isin([1, 2])
         )
 
+    
     # -------------------------------------------------------------------------
     # MEXICO
     # -------------------------------------------------------------------------
@@ -365,20 +538,148 @@ def build_core(
             .agg("_".join, axis=1)
         )
 
-        w = "fac" if "fac" in df.columns else "FAC"
+        # ---------------------------------------------------------------------
+        # PONDERADOR
+        # ---------------------------------------------------------------------
 
-        out["ponderador"] = df[w]
+        if "fac" in df.columns:
 
-        estado = df.get("clase2", 0)
+         out["ponderador"] = df["fac"]
 
-        cat = df.get("pos_ocu", -1)
+        elif "FAC" in df.columns:
 
-        reg_no = df.get("p3j", 0).eq(2)
+         out["ponderador"] = df["FAC"]
 
-        small = (
-            df.get("emple7c", 99)
-            .isin([1, 2, 3])
-        )
+        elif "fac_tri" in df.columns:
+
+         out["ponderador"] = df["fac_tri"]
+
+        elif "fac_tri_x" in df.columns:
+
+         out["ponderador"] = df["fac_tri_x"]
+
+        elif "fac_tri_y" in df.columns:
+
+         out["ponderador"] = df["fac_tri_y"]
+
+        else:
+
+         raise ValueError(
+             "México sin ponderador"
+          )
+
+        # ---------------------------------------------------------------------
+        # CONDICION ACTIVIDAD
+        # clase2:
+        # 1 ocupado
+        # 2 desocupado
+        # 3 disponible
+        # 4 no disponible
+        # ---------------------------------------------------------------------
+
+        if "clase2" in df.columns:
+
+            estado = pd.to_numeric(
+                df["clase2"],
+                errors="coerce",
+            )
+
+        else:
+
+            warnings.warn(
+                "México sin clase2; usando r_def"
+            )
+
+            estado = pd.to_numeric(
+                df.get("r_def", 0),
+                errors="coerce",
+            )
+
+        # ---------------------------------------------------------------------
+        # POSICION OCUPACION
+        # pos_ocu:
+        # 1 subordinado/remunerado
+        # 3 cuenta propia
+        # ---------------------------------------------------------------------
+
+        if "pos_ocu" in df.columns:
+
+            cat = pd.to_numeric(
+                df["pos_ocu"],
+                errors="coerce",
+            )
+
+        else:
+
+            warnings.warn(
+                "México sin pos_ocu; usando p3"
+            )
+
+            cat = pd.to_numeric(
+                df.get("p3", -1),
+                errors="coerce",
+            )
+
+        # ---------------------------------------------------------------------
+        # SIN CONTRATO
+        # ---------------------------------------------------------------------
+
+        if "p3j" in df.columns:
+
+            reg_no = (
+                pd.to_numeric(
+                    df["p3j"],
+                    errors="coerce",
+                )
+                .eq(2)
+            )
+
+        elif "p3j1" in df.columns:
+
+            reg_no = (
+                pd.to_numeric(
+                    df["p3j1"],
+                    errors="coerce",
+                )
+                .eq(2)
+            )
+
+        else:
+
+            warnings.warn(
+                "México sin variable p3j/p3j1"
+            )
+
+            reg_no = pd.Series(
+                False,
+                index=df.index,
+            )
+
+        # ---------------------------------------------------------------------
+        # PEQUEÑA UNIDAD
+        # ---------------------------------------------------------------------
+
+        if "tue_ppal" in df.columns:
+
+            small = (
+                pd.to_numeric(
+                    df["tue_ppal"],
+                    errors="coerce",
+                )
+                .eq(1)
+            )
+
+        else:
+
+            small = (
+                pd.to_numeric(
+                    df.get("p3k1", 99),
+                    errors="coerce",
+                )
+                .isin([1, 2, 3])
+            )
+
+
 
     # -------------------------------------------------------------------------
     # COLOMBIA
@@ -417,9 +718,13 @@ def build_core(
         cat = df.get("P6430", -1)
 
         reg_no = ~(
-            (df.get("P6440", 0) == 1)
+            (
+                df.get("P6440", 0) == 1
+            )
             &
-            (df.get("P6450", 0) == 2)
+            (
+                df.get("P6450", 0) == 2
+            )
         )
 
         small = (
@@ -428,19 +733,23 @@ def build_core(
         )
 
     # =========================================================================
+    # IDS
+    # =========================================================================
 
     out["id"] = df["id"]
 
-    # -------------------------------------------------------------------------
+    # =========================================================================
+    # CONDICION ACTIVIDAD
+    # =========================================================================
 
-    if country == "brasil":
+    if country == "mexico":
 
         out["ocupado"] = (
-            estado.eq("Pessoas ocupadas")
+            estado.eq(1)
         ).astype(int)
 
         out["desocupado"] = (
-            estado.eq("Pessoas desocupadas")
+            estado.eq(2)
         ).astype(int)
 
     else:
@@ -448,16 +757,18 @@ def build_core(
         out["ocupado"] = (
             estado.eq(1)
             if hasattr(estado, "eq")
-            else (estado == 1)
+            else (
+                estado == "Pessoas ocupadas"
+            )
         ).astype(int)
 
         out["desocupado"] = (
             estado.eq(2)
             if hasattr(estado, "eq")
-            else (estado == 2)
+            else (
+                estado == "Pessoas desocupadas"
+            )
         ).astype(int)
-
-    # -------------------------------------------------------------------------
 
     out["inactivo"] = (
         1
@@ -465,7 +776,9 @@ def build_core(
         - out["desocupado"]
     )
 
-    # -------------------------------------------------------------------------
+    # =========================================================================
+    # CATEGORIA OCUPACIONAL
+    # =========================================================================
 
     out["asalariado"] = (
 
@@ -480,25 +793,27 @@ def build_core(
             cat.str.contains(
                 "Empregado|Trabalhador doméstico|Militar",
                 case=False,
-                na=False
+                na=False,
             )
 
             if country == "brasil"
 
             else (
 
-                (cat == 1)
+                (
+                    cat == 1
+                )
 
                 if country == "mexico"
 
-                else cat.isin([1, 2, 3, 8])
+                else cat.isin(
+                    [1, 2, 3, 8]
+                )
 
             )
         )
 
     ).astype(int)
-
-    # -------------------------------------------------------------------------
 
     out["cuentapropia"] = (
 
@@ -511,41 +826,118 @@ def build_core(
             cat.str.contains(
                 "Conta",
                 case=False,
-                na=False
+                na=False,
             )
 
             if country == "brasil"
 
             else (
 
-                cat == 3
+                (
+                    cat == 3
+                )
 
                 if country == "mexico"
 
-                else cat == 4
+                else (
+                    cat == 4
+                )
 
             )
         )
 
     ).astype(int)
 
-    # -------------------------------------------------------------------------
+    # =========================================================================
+    # INFORMALIDAD
+    # =========================================================================
 
-    no_ss = (
+    if country == "mexico":
 
-        (df.get("VD4012", "") == "Não contribuinte")
+        # ---------------------------------------------------------------------
+        # EMP_PPAL:
+        # 1 informal
+        # 2 formal
+        # ---------------------------------------------------------------------
 
-        if country == "brasil"
+        if "EMP_PPAL" in df.columns:
 
-        else (
+            out["informal"] = (
+                pd.to_numeric(
+                    df["EMP_PPAL"],
+                    errors="coerce",
+                )
+                .eq(1)
+            ).astype(int)
 
-            (df.get("p3m4", 0) != 4)
+            out["formal"] = (
+                pd.to_numeric(
+                    df["EMP_PPAL"],
+                    errors="coerce",
+                )
+                .eq(2)
+            ).astype(int)
 
-            if country == "mexico"
+        else:
+
+            # fallback
+            if "SEG_SOC" in df.columns:
+
+                no_ss = (
+                    pd.to_numeric(
+                        df["SEG_SOC"],
+                        errors="coerce",
+                    )
+                    .eq(2)
+                )
+
+            else:
+
+                no_ss = (
+                    pd.to_numeric(
+                        df.get("p3m4", 0),
+                        errors="coerce",
+                    ) != 4
+                )
+
+            out["informal"] = (
+                (
+                    out["asalariado"].eq(1)
+                    &
+                    reg_no
+                )
+                |
+                (
+                    out["cuentapropia"].eq(1)
+                    &
+                    (
+                        small | no_ss
+                    )
+                )
+            ).astype(int)
+
+            out["formal"] = (
+                1 - out["informal"]
+            )
+
+    else:
+
+        no_ss = (
+
+            (
+                df.get(
+                    "VD4012",
+                    "",
+                ) == "Não contribuinte"
+            )
+
+            if country == "brasil"
 
             else (
 
-                (df.get("P6920", 0) == 2)
+                (
+                    df.get("P6920", 0) == 2
+                )
 
                 if country == "colombia"
 
@@ -554,25 +946,29 @@ def build_core(
             )
         )
 
-    )
+        out["informal"] = (
+            (
+                out["asalariado"].eq(1)
+                &
+                reg_no
+            )
+            |
+            (
+                out["cuentapropia"].eq(1)
+                &
+                (
+                    small | no_ss
+                )
+            )
+        ).astype(int)
 
-    # -------------------------------------------------------------------------
-
-    out["informal"] = (
-        (
-            out["asalariado"].eq(1)
-            &
-            reg_no
+        out["formal"] = (
+            1 - out["informal"]
         )
-        |
-        (
-            out["cuentapropia"].eq(1)
-            &
-            (small | no_ss)
-        )
-    ).astype(int)
 
-    out["formal"] = 1 - out["informal"]
+    # =========================================================================
+    # SECTOR
+    # =========================================================================
 
     out["sector"] = "Priv"
 
@@ -583,13 +979,22 @@ def build_core(
 # RUNNER
 # =============================================================================
 
-def run_country_year(country: str, year: int):
+def run_country_year(
+    country: str,
+    year: int,
+):
 
-    log(f"INICIANDO {country.upper()} {year}")
+    log(
+        f"INICIANDO {country.upper()} {year}"
+    )
 
-    periods = get_periods(country, year)
+    periods = get_periods(
+        country,
+        year,
+    )
 
     if not periods:
+
         raise FileNotFoundError(
             f"Sin períodos para {country} {year}"
         )
@@ -598,12 +1003,18 @@ def run_country_year(country: str, year: int):
 
     for t, p in periods.items():
 
-        log(f"Procesando trimestre {t}")
+        log(
+            f"Procesando trimestre {t}"
+        )
 
-        raw = load_period(country, p, year)
+        raw = load_period(
+            country,
+            p,
+            year,
+        )
 
         # -------------------------------------------------------------
-        # Brasil: filtrar trimestre desde parquet consolidado
+        # BRASIL
         # -------------------------------------------------------------
 
         if country == "brasil":
@@ -613,16 +1024,18 @@ def run_country_year(country: str, year: int):
             ].copy()
 
             if raw_t.empty:
+
                 warnings.warn(
                     f"Brasil {year} T{t} vacío"
                 )
+
                 continue
 
             core = build_core(
                 country,
                 year,
                 t,
-                raw_t
+                raw_t,
             )
 
         else:
@@ -631,29 +1044,39 @@ def run_country_year(country: str, year: int):
                 country,
                 year,
                 t,
-                raw
+                raw,
             )
 
         # -------------------------------------------------------------
-        # DOWNCAST PARA AHORRAR MEMORIA
+        # DOWNCAST
         # -------------------------------------------------------------
 
-        int_cols = core.select_dtypes(
-            include=["int64"]
-        ).columns
-
-        float_cols = core.select_dtypes(
-            include=["float64"]
-        ).columns
-
-        core[int_cols] = core[int_cols].apply(
-            pd.to_numeric,
-            downcast="integer"
+        int_cols = (
+            core.select_dtypes(
+                include=["int64"]
+            ).columns
         )
 
-        core[float_cols] = core[float_cols].apply(
-            pd.to_numeric,
-            downcast="float"
+        float_cols = (
+            core.select_dtypes(
+                include=["float64"]
+            ).columns
+        )
+
+        core[int_cols] = (
+            core[int_cols]
+            .apply(
+                pd.to_numeric,
+                downcast="integer",
+            )
+        )
+
+        core[float_cols] = (
+            core[float_cols]
+            .apply(
+                pd.to_numeric,
+                downcast="float",
+            )
         )
 
         log(
@@ -662,7 +1085,7 @@ def run_country_year(country: str, year: int):
         )
 
         # -------------------------------------------------------------
-        # GUARDADO INTERMEDIO POR TRIMESTRE
+        # TMP
         # -------------------------------------------------------------
 
         tmp_dir = Path(
@@ -671,7 +1094,7 @@ def run_country_year(country: str, year: int):
 
         tmp_dir.mkdir(
             parents=True,
-            exist_ok=True
+            exist_ok=True,
         )
 
         tmp_file = (
@@ -681,7 +1104,7 @@ def run_country_year(country: str, year: int):
 
         core.to_parquet(
             tmp_file,
-            index=False
+            index=False,
         )
 
         log(
@@ -691,24 +1114,26 @@ def run_country_year(country: str, year: int):
         dfs.append(core)
 
     # -------------------------------------------------------------
-    # VALIDACIÓN
+    # VALIDACION
     # -------------------------------------------------------------
 
     if not dfs:
+
         raise ValueError(
-            f"No se generaron datos para "
-            f"{country} {year}"
+            f"No se generaron datos para {country} {year}"
         )
 
     # -------------------------------------------------------------
-    # CONCAT FINAL
+    # CONCAT
     # -------------------------------------------------------------
 
-    log("Concatenando trimestres...")
+    log(
+        "Concatenando trimestres..."
+    )
 
     df = pd.concat(
         dfs,
-        ignore_index=True
+        ignore_index=True,
     )
 
     log(
@@ -726,7 +1151,9 @@ def run_country_year(country: str, year: int):
 
     assert df["ponderador"].notna().all()
 
-    assert (df["ponderador"] > 0).all()
+    assert (
+        df["ponderador"] > 0
+    ).all()
 
     if df["ocupado"].mean() < 0.2:
 
@@ -743,12 +1170,11 @@ def run_country_year(country: str, year: int):
     ).all():
 
         warnings.warn(
-            "inconsistencia en condición "
-            "de actividad"
+            "inconsistencia en condición de actividad"
         )
 
     # -------------------------------------------------------------
-    # OUTPUT FINAL
+    # OUTPUT
     # -------------------------------------------------------------
 
     out = Path(
@@ -757,7 +1183,7 @@ def run_country_year(country: str, year: int):
 
     out.mkdir(
         parents=True,
-        exist_ok=True
+        exist_ok=True,
     )
 
     parquet_path = (
@@ -771,7 +1197,7 @@ def run_country_year(country: str, year: int):
 
     df.to_parquet(
         parquet_path,
-        index=False
+        index=False,
     )
 
     log(
