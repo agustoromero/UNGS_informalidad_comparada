@@ -130,41 +130,17 @@ def get_periods(country: str, year: int):
 
     if country == "colombia":
 
-        base = Path("data/colombia")
+        base = Path("data/colombia_clean") / str(year)
 
-        months = sorted(
-            [
-                p
-                for p in base.glob("*")
-                if p.is_dir()
-            ]
-        )
+        if not base.exists():
+            raise FileNotFoundError(f"No existe {base}")
 
-        if not months:
-
-            raise FileNotFoundError(
-                "No se encontraron carpetas GEIH"
-            )
-
-        periods = {}
-
-        q = 1
-
-        for i in range(0, len(months), 3):
-
-            block = months[i:i + 3]
-
-            if len(block) < 3:
-
-                warnings.warn(
-                    f"Trimestre incompleto Colombia: {block}"
-                )
-
-                continue
-
-            periods[q] = block
-
-            q += 1
+        periods = {
+            1: base / "T1.parquet",
+            2: base / "T2.parquet",
+            3: base / "T3.parquet",
+            4: base / "T4.parquet",
+        }
 
         return periods
 
@@ -351,88 +327,16 @@ def load_period(country: str, src, year=None):
          )
 
         return merged
+
     # -------------------------------------------------------------------------
     # COLOMBIA
     # -------------------------------------------------------------------------
 
     if country == "colombia":
 
-        parts = []
+        log(f"Leyendo parquet Colombia: {src.name}")
 
-        for m in src:
-
-            log(
-                f"Leyendo Colombia: {m.name}"
-            )
-
-            car = list(
-                m.rglob("*Caracter*csv")
-            )
-
-            ft = list(
-                m.rglob("*Fuerza*csv")
-            )
-
-            ocu = list(
-                m.rglob("*Ocup*csv")
-            )
-
-            if not car or not ft or not ocu:
-
-                warnings.warn(
-                    f"Archivos faltantes en {m}"
-                )
-
-                continue
-
-            cdf = pd.read_csv(
-                car[0],
-                low_memory=False,
-            )
-
-            fdf = pd.read_csv(
-                ft[0],
-                low_memory=False,
-            )
-
-            odf = pd.read_csv(
-                ocu[0],
-                low_memory=False,
-            )
-
-            keys = [
-                "DIRECTORIO",
-                "SECUENCIA_P",
-                "ORDEN",
-                "HOGAR",
-            ]
-
-            tmp = (
-                cdf
-                .merge(
-                    fdf,
-                    on=keys,
-                    how="inner",
-                )
-                .merge(
-                    odf,
-                    on=keys,
-                    how="left",
-                )
-            )
-
-            parts.append(tmp)
-
-        if not parts:
-
-            raise ValueError(
-                "No se pudieron cargar meses Colombia"
-            )
-
-        return pd.concat(
-            parts,
-            ignore_index=True,
-        )
+        return pd.read_parquet(src)
 
     # -------------------------------------------------------------------------
 
@@ -680,64 +584,225 @@ def build_core(
             )
 
 
-
     # -------------------------------------------------------------------------
     # COLOMBIA
     # -------------------------------------------------------------------------
 
-    else:
+    elif country == "colombia":
 
         keys = [
             "DIRECTORIO",
             "SECUENCIA_P",
             "ORDEN",
-            "HOGAR",
         ]
+        
+        tmp = df.copy()
 
         df["id"] = (
-            df[keys]
-            .astype(str)
-            .agg("_".join, axis=1)
+           df[keys]
+           .astype(str)
+           .agg("_".join, axis=1)
+         )
+        
+        
+        # ---------------------------------------------------------------------
+        # PONDERADOR
+        # ---------------------------------------------------------------------
+        fex_files = list(
+              Path("data/colombia/Total_Fact_expansion")
+              .rglob("*Fact*expans*.csv")
+        )
+        if not fex_files:
+             raise ValueError("No se encontró FEX Colombia")
+        
+
+        fex = pd.read_csv(
+          fex_files[0],
+          encoding="latin1",
+          sep=";",
+          low_memory=False,
+        )
+            
+        # limpiar BOM + espacios
+        fex.columns = (
+             fex.columns
+             .str.replace("\ufeff", "", regex=False)
+             .str.replace("ï»¿", "", regex=False)
+             .str.strip()
+             .str.upper()
+            )
+        
+        # =========================================================
+        # 2. detectar columnas FEX
+        # =========================================================
+
+        fex_cols = [c for c in fex.columns if "FEX" in c.upper()]
+
+        if not fex_cols:
+             raise ValueError("No hay columnas FEX en archivo expansion")
+        
+        
+        priority = [
+         "FEX_DPTO_C",
+         "FEX_C",
+         "FEX",
+        ]
+
+
+        fex_col = next(
+            (c for p in priority for c in fex_cols if c == p),
+            fex_cols[0]
         )
 
-        w = next(
-            c
-            for c in [
-                "fex_c_2011",
-                "FEX_C_2011",
-                "fexp",
-                "FEXP",
-            ]
-            if c in df.columns
+        print("[COLOMBIA] FEX:", fex_col)
+           
+        for k in keys:
+            df[k] = df[k].astype(str)
+            fex[k] = fex[k].astype(str)
+
+        fex = fex[keys + [fex_col]].copy()
+
+        print("DF KEYS SAMPLE:")
+        print(df[keys].head())
+
+        print("FEX KEYS SAMPLE:")
+        print(fex[keys].head())
+
+        print("FEX COLS:")
+        print(fex.columns.tolist())
+
+        assert all(k in df.columns for k in keys), "DF sin keys"
+        assert all(k in fex.columns for k in keys), "FEX sin keys"
+
+        print(df[keys].dtypes)
+        print(fex[keys].dtypes)
+
+
+
+        # eliminar FEX previo del dataframe original
+        df = df.drop(columns=[fex_col], errors="ignore")
+
+        tmp = df.merge(
+          fex[keys + [fex_col]],
+         on=keys,
+         how="left"
         )
 
-        out["ponderador"] = df[w]
 
-        estado = df.get("OCI", 1)
+        print("TMP COLS:")
+        print(tmp.columns.tolist())
 
-        cat = df.get("P6430", -1)
+        print("COLUMNAS FEX EN TMP:")
+        print([c for c in tmp.columns if "FEX" in c.upper()])
 
-        reg_no = ~(
-            (
-                df.get("P6440", 0) == 1
+        tmp["ponderador"] = (
+             tmp[fex_col]
+             .astype(str)
+             .str.replace(",", ".", regex=False)
             )
-            &
-            (
-                df.get("P6450", 0) == 2
+        tmp["ponderador"] = pd.to_numeric(
+            tmp["ponderador"], 
+            errors="coerce"
             )
+        
+
+        print("[COLOMBIA] ponderador NA:", tmp["ponderador"].isna().mean())
+        print(tmp["ponderador"].describe())
+
+
+        # ---------------------------------------------------------------------
+        # CONDICION ACTIVIDAD
+        #
+        # OCI:
+        # 1 ocupado
+        # 2 desocupado
+        # 3 inactivo
+        # ---------------------------------------------------------------------
+
+        estado = df.get(
+             "OCI",
+             pd.Series(pd.NA, index=df.index)
+            )
+
+        estado = pd.to_numeric(estado, errors="coerce")
+
+        # ---------------------------------------------------------------------
+        # POSICION OCUPACIONAL
+        #
+        # P6430:
+        # 1 obrero/empleado particular
+        # 4 cuenta propia
+        # ---------------------------------------------------------------------
+
+        cat = df.get(
+              "P6430",
+             pd.Series(pd.NA, index=df.index)
+        )
+
+        cat = pd.to_numeric(cat, errors="coerce")
+
+        # ---------------------------------------------------------------------
+        # INFORMALIDAD
+        #
+        # P6450:
+        # 1 cotiza
+        # 2 no cotiza
+        # ---------------------------------------------------------------------
+
+        no_ss = (
+            pd.to_numeric(
+                df.get("P6450"),
+                errors="coerce",
+            )
+            .eq(2)
+        )
+
+        # ---------------------------------------------------------------------
+        # SIN CONTRATO
+        #
+        # P6440:
+        # 1 escrito
+        # 2 verbal
+        # ---------------------------------------------------------------------
+
+        reg_no = (
+            pd.to_numeric(
+                df.get("P6440"),
+                errors="coerce",
+            )
+            .ne(1)
+        )
+
+        # ---------------------------------------------------------------------
+        # PEQUEÑA EMPRESA
+        #
+        # P6870:
+        # tamaño empresa
+        # ---------------------------------------------------------------------
+
+        p6870 = df.get(
+             "P6870",
+             pd.Series(
+                 99,
+                 index=df.index,
+            ),
         )
 
         small = (
-            df.get("P6870", 99)
-            .isin([1, 2, 3, 4])
-        )
-
+            pd.to_numeric(
+             p6870,
+             errors="coerce",
+            )
+             .isin([1, 2, 3, 4])
+        )    
+    
     # =========================================================================
     # IDS
     # =========================================================================
-
-    out["id"] = df["id"]
-
+        out["id"] = tmp["id"]
+        out["ponderador"] = tmp["ponderador"]
+        df = tmp
+        
     # =========================================================================
     # CONDICION ACTIVIDAD
     # =========================================================================
