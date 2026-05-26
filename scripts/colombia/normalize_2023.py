@@ -77,7 +77,6 @@ for month, trim in MONTH_TO_TRIM.items():
     ft_keep = (
         MERGE_KEYS
         + [
-            "FEX_C18",
             "PET",
             "FFT",
         ]

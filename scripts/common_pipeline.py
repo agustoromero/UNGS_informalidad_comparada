@@ -1,6 +1,7 @@
 from pathlib import Path
 import warnings
 
+from matplotlib.style import available
 import pandas as pd
 import pyreadr
 
@@ -180,6 +181,7 @@ def load_period(country: str, src, year=None):
         needed = [
             "Ano",
             "Trimestre",
+            "UF",    
             "UPA",
             "V1008",
             "V1014",
@@ -396,12 +398,23 @@ def build_core(
     # -------------------------------------------------------------------------
     # BRASIL
     # -------------------------------------------------------------------------
-
+    # BRASIL (PNADC)
+    #
+    # ID:
+    # UF + UPA + V1008 + V1014 + V2003
+    #
+    # Observación:
+    # ~4% de IDs aparecen múltiples veces dentro del trimestre.
+    # No son duplicados exactos.
+    # Las diferencias se concentran en ponderadores (V1028)
+    # y variables derivadas.
+    # No elimino duplicados.
     elif country == "brasil":
 
         df["id"] = (
             df[
                 [
+                    "UF",    
                     "UPA",
                     "V1008",
                     "V1014",
@@ -412,16 +425,22 @@ def build_core(
             .agg("_".join, axis=1)
         )
 
+        out["id"] = df["id"]  
+
         out["ponderador"] = df["V1028"]
 
-        estado = df["VD4002"]
+        estado = pd.to_numeric(
+           df["VD4002"],
+           errors="coerce",
+        )
 
-        cat = df["VD4009"].astype(str)
-
-        reg_no = cat.str.contains(
-            "sem carteira",
-            case=False,
-            na=False,
+        cat = pd.to_numeric(
+            df["VD4009"],
+            errors="coerce",
+        )
+        reg_no = pd.Series(
+            False,
+            index=df.index,
         )
 
         small = (
@@ -608,107 +627,49 @@ def build_core(
         # ---------------------------------------------------------------------
         # PONDERADOR
         # ---------------------------------------------------------------------
-        fex_files = list(
-              Path("data/colombia/Total_Fact_expansion")
-              .rglob("*Fact*expans*.csv")
-        )
-        if not fex_files:
-             raise ValueError("No se encontró FEX Colombia")
-        
+        tmp = df.copy()
 
-        fex = pd.read_csv(
-          fex_files[0],
-          encoding="latin1",
-          sep=";",
-          low_memory=False,
-        )
-            
-        # limpiar BOM + espacios
-        fex.columns = (
-             fex.columns
-             .str.replace("\ufeff", "", regex=False)
-             .str.replace("ï»¿", "", regex=False)
-             .str.strip()
-             .str.upper()
-            )
-        
-        # =========================================================
-        # 2. detectar columnas FEX
-        # =========================================================
-
-        fex_cols = [c for c in fex.columns if "FEX" in c.upper()]
-
-        if not fex_cols:
-             raise ValueError("No hay columnas FEX en archivo expansion")
-        
-        
-        priority = [
-         "FEX_DPTO_C",
-         "FEX_C",
-         "FEX",
+        candidate_weights = [
+             "FEX_C18",
+             "FEX_DPTO_C",
+             "FEX_C",
+              "FEX",
         ]
 
+        available = [
+             c
+             for c in candidate_weights
+             if c in tmp.columns
+        ]
 
-        fex_col = next(
-            (c for p in priority for c in fex_cols if c == p),
-            fex_cols[0]
-        )
+        if not available:
+             raise ValueError(
+                 f"No se encontró ponderador Colombia: {tmp.columns.tolist()}"
+         )
 
-        print("[COLOMBIA] FEX:", fex_col)
-           
-        for k in keys:
-            df[k] = df[k].astype(str)
-            fex[k] = fex[k].astype(str)
+        fex_col = available[0]
 
-        fex = fex[keys + [fex_col]].copy()
-
-        print("DF KEYS SAMPLE:")
-        print(df[keys].head())
-
-        print("FEX KEYS SAMPLE:")
-        print(fex[keys].head())
-
-        print("FEX COLS:")
-        print(fex.columns.tolist())
-
-        assert all(k in df.columns for k in keys), "DF sin keys"
-        assert all(k in fex.columns for k in keys), "FEX sin keys"
-
-        print(df[keys].dtypes)
-        print(fex[keys].dtypes)
-
-
-
-        # eliminar FEX previo del dataframe original
-        df = df.drop(columns=[fex_col], errors="ignore")
-
-        tmp = df.merge(
-          fex[keys + [fex_col]],
-         on=keys,
-         how="left"
-        )
-
-
-        print("TMP COLS:")
-        print(tmp.columns.tolist())
-
-        print("COLUMNAS FEX EN TMP:")
-        print([c for c in tmp.columns if "FEX" in c.upper()])
+        print("[COLOMBIA] usando ponderador:", fex_col)
 
         tmp["ponderador"] = (
              tmp[fex_col]
              .astype(str)
              .str.replace(",", ".", regex=False)
-            )
+        )
+
         tmp["ponderador"] = pd.to_numeric(
-            tmp["ponderador"], 
-            errors="coerce"
-            )
-        
+        tmp["ponderador"],
+        errors="coerce",
+        )
 
-        print("[COLOMBIA] ponderador NA:", tmp["ponderador"].isna().mean())
-        print(tmp["ponderador"].describe())
+        print(
+             "[COLOMBIA] ponderador NA:",
+             tmp["ponderador"].isna().mean()
+       )
 
+        print(
+            tmp["ponderador"].describe()
+        )
 
         # ---------------------------------------------------------------------
         # CONDICION ACTIVIDAD
@@ -819,27 +780,28 @@ def build_core(
 
     else:
 
+        estado = pd.to_numeric(
+            estado,
+            errors="coerce",
+        )
+
+        valido = estado.notna()
+
         out["ocupado"] = (
             estado.eq(1)
-            if hasattr(estado, "eq")
-            else (
-                estado == "Pessoas ocupadas"
-            )
         ).astype(int)
 
         out["desocupado"] = (
             estado.eq(2)
-            if hasattr(estado, "eq")
-            else (
-                estado == "Pessoas desocupadas"
-            )
         ).astype(int)
 
-    out["inactivo"] = (
-        1
-        - out["ocupado"]
-        - out["desocupado"]
-    )
+        out["inactivo"] = (
+            valido
+            &
+            ~out["ocupado"].astype(bool)
+            &
+            ~out["desocupado"].astype(bool)
+        ).astype(int)
 
     # =========================================================================
     # CATEGORIA OCUPACIONAL
@@ -855,11 +817,12 @@ def build_core(
 
         else (
 
-            cat.str.contains(
-                "Empregado|Trabalhador doméstico|Militar",
-                case=False,
-                na=False,
-            )
+            cat.isin([
+            2,
+            3,
+            4,
+            5
+            ])
 
             if country == "brasil"
 
@@ -888,11 +851,7 @@ def build_core(
 
         else (
 
-            cat.str.contains(
-                "Conta",
-                case=False,
-                na=False,
-            )
+            cat.eq(6)
 
             if country == "brasil"
 

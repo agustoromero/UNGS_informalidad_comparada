@@ -98,3 +98,11 @@ outputs/raw_brasil/*.parquet
 outputs/raw_brasil/*.csv
 outputs/harmonized/*.parquet
 outputs/harmonized/*.csv
+
+#################################################
+# PIPELINE TEMPORALES
+#################################################
+
+outputs/harmonized/tmp/
+outputs/harmonized/tmp/**
+
