@@ -1,7 +1,6 @@
 from pathlib import Path
 import warnings
 
-from matplotlib.style import available
 import pandas as pd
 import pyreadr
 
@@ -41,6 +40,35 @@ COMMON_COLUMNS = [
 def log(msg):
 
     print(f"[PIPELINE] {msg}")
+
+
+def summarize_duplicate_ids(df: pd.DataFrame, id_col, weight_col: str, label: str) -> None:
+
+    dup_mask = df.duplicated(id_col, keep=False)
+    dup_rows = int(dup_mask.sum())
+
+    if dup_rows == 0:
+        log(f"{label}: sin IDs duplicados")
+        return
+
+    dup_share = dup_rows / max(len(df), 1)
+    id_cols = id_col if isinstance(id_col, list) else [id_col]
+    duplicated = df.loc[dup_mask, [*id_cols, weight_col]].copy()
+
+    weight_variation = (
+        duplicated
+        .groupby(id_cols, dropna=False)[weight_col]
+        .nunique(dropna=True)
+        .gt(1)
+        .mean()
+    )
+
+    warnings.warn(
+        f"{label}: {dup_rows:,} filas con ID duplicado "
+        f"({dup_share:.2%} del trimestre); "
+        f"{weight_variation:.2%} de IDs duplicados con V1028 variable"
+    )
+
 
 
 # =============================================================================
@@ -196,6 +224,7 @@ def load_period(country: str, src, year=None):
         df = pd.read_parquet(
             src,
             columns=needed,
+            filters=[("Ano", "==", year)],
         )
 
         df["Ano"] = (
@@ -213,10 +242,6 @@ def load_period(country: str, src, year=None):
             )
             .astype("Int64")
         )
-
-        df = df[
-            df["Ano"] == year
-        ].copy()
 
         log(
             f"Brasil {year}: "
@@ -615,8 +640,6 @@ def build_core(
             "ORDEN",
         ]
         
-        tmp = df.copy()
-
         df["id"] = (
            df[keys]
            .astype(str)
@@ -778,6 +801,29 @@ def build_core(
             estado.eq(2)
         ).astype(int)
 
+        out["inactivo"] = (
+            ~(out["ocupado"].astype(bool) | out["desocupado"].astype(bool))
+        ).astype(int)
+
+    elif country == "brasil":
+
+        estado = pd.to_numeric(
+            estado,
+            errors="coerce",
+        )
+
+        out["ocupado"] = (
+            estado.eq(1)
+        ).astype(int)
+
+        out["desocupado"] = (
+            estado.eq(2)
+        ).astype(int)
+
+        out["inactivo"] = (
+            estado.isna()
+        ).astype(int)
+
     else:
 
         estado = pd.to_numeric(
@@ -818,10 +864,13 @@ def build_core(
         else (
 
             cat.isin([
+            1,
             2,
             3,
             4,
-            5
+            5,
+            6,
+            7,
             ])
 
             if country == "brasil"
@@ -851,7 +900,7 @@ def build_core(
 
         else (
 
-            cat.eq(6)
+            cat.eq(9)
 
             if country == "brasil"
 
@@ -944,30 +993,44 @@ def build_core(
                 1 - out["informal"]
             )
 
+    elif country == "brasil":
+
+        sem_carteira = cat.isin([2, 4, 6])
+
+        no_ss = (
+            pd.to_numeric(
+                df.get("VD4012"),
+                errors="coerce",
+            )
+            .eq(2)
+        )
+
+        out["informal"] = (
+            (
+                out["asalariado"].eq(1)
+                &
+                sem_carteira
+            )
+            |
+            (
+                out["cuentapropia"].eq(1)
+                &
+                no_ss
+            )
+        ).astype(int)
+
+        out["formal"] = (
+            1 - out["informal"]
+        )
+
     else:
 
         no_ss = (
-
             (
-                df.get(
-                    "VD4012",
-                    "",
-                ) == "Não contribuinte"
+                df.get("P6920", 0) == 2
             )
-
-            if country == "brasil"
-
-            else (
-
-                (
-                    df.get("P6920", 0) == 2
-                )
-
-                if country == "colombia"
-
-                else reg_no
-
-            )
+            if country == "colombia"
+            else reg_no
         )
 
         out["informal"] = (
@@ -1054,6 +1117,13 @@ def run_country_year(
                 )
 
                 continue
+
+            summarize_duplicate_ids(
+                raw_t,
+                id_col=["UF", "UPA", "V1008", "V1014", "V2003"],
+                weight_col="V1028",
+                label=f"Brasil {year} T{t}",
+            )
 
             core = build_core(
                 country,
