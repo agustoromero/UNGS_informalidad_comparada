@@ -1,7 +1,65 @@
 from pathlib import Path
+import re
 import pandas as pd
 
-base = Path(r"C:\Users\agusr\OneDrive\repos\UNGS_informalidad_comparada")
+base = Path(__file__).resolve().parents[2]
+
+
+# =========================================================
+# HELPERS
+# =========================================================
+
+def build_layout_from_input_txt(input_txt: Path) -> pd.DataFrame:
+    """
+    Construye layout FWF desde input SAS oficial (fuente canónica).
+    Formato esperado por línea: @<start> <var> <fmt>
+    donde <fmt> puede incluir $ (carácter) y ancho numérico.
+    """
+    rows = []
+
+    pattern = re.compile(r"^@\s*(\d+)\s+([A-Za-z0-9_]+)\s+([^;\s]+)")
+
+    with input_txt.open("r", encoding="latin1", errors="ignore") as fh:
+        for line in fh:
+            raw = line.strip()
+            if not raw.startswith("@"):
+                continue
+
+            m = pattern.match(raw)
+            if not m:
+                continue
+
+            start = int(m.group(1))
+            var = m.group(2)
+            fmt = m.group(3)
+
+            width_match = re.search(r"(\d+)", fmt)
+            if not width_match:
+                continue
+
+            width = int(width_match.group(1))
+            if width <= 0:
+                continue
+
+            rows.append((start, width, var))
+
+    if not rows:
+        raise ValueError(f"No se pudo parsear layout desde {input_txt}")
+
+    layout = pd.DataFrame(rows, columns=["pos_ini", "tam", "var"])
+    layout = layout.drop_duplicates(subset=["var"], keep="first")
+    layout = layout.sort_values(["pos_ini", "var"]).reset_index(drop=True)
+    return layout
+
+
+def build_colspecs(layout: pd.DataFrame):
+    colspecs = [
+        (int(r.pos_ini) - 1, int(r.pos_ini) - 1 + int(r.tam))
+        for r in layout.itertuples()
+    ]
+    names = layout["var"].astype(str).tolist()
+    return colspecs, names
+
 
 # =========================================================
 # 1. ENCONTRAR TODOS LOS TXT PNADC
@@ -22,71 +80,35 @@ for i, f in enumerate(txt_files, 1):
 print("\nTOTAL TXT:", len(txt_files))
 
 # =========================================================
-# 2. ENCONTRAR DICCIONARIO
+# 2. ENCONTRAR INPUT_TXT (SAS) Y DICCIONARIO
 # =========================================================
+
+input_files = sorted(base.rglob("input_PNADC*.txt"))
+if not input_files:
+    raise FileNotFoundError("No se encontró input_PNADC*.txt (layout SAS)")
+
+input_path = input_files[0]
+
+print("\n" + "=" * 80)
+print("INPUT TXT (LAYOUT CANÓNICO)")
+print("=" * 80)
+print(input_path)
 
 dict_files = sorted(base.rglob("Brasil*dicionario*PNADC*.xls*"))
-
-if not dict_files:
-    raise FileNotFoundError("No se encontró diccionario PNADC")
-
-dict_path = dict_files[0]
-
-print("\n" + "=" * 80)
-print("DICCIONARIO")
-print("=" * 80)
-print(dict_path)
+if dict_files:
+    print("\nDICCIONARIO detectado (solo referencia de etiquetas):")
+    print(dict_files[0])
 
 # =========================================================
-# 3. LEER DICCIONARIO Y CONSTRUIR COLSPECS
+# 3. CONSTRUIR COLSPECS DESDE INPUT_TXT
 # =========================================================
 
-xls = pd.ExcelFile(dict_path)
-df_raw = xls.parse(xls.sheet_names[0], header=None)
-
-# buscar inicio real del layout
-mask = df_raw.apply(
-    lambda col: col.astype(str).str.contains("Posição inicial", na=False)
-)
-
-start_row = mask.any(axis=1).idxmax()
-
-layout = df_raw.iloc[start_row + 1:].copy()
-layout = layout.dropna(how="all")
-
-# quedarnos con columnas relevantes
-layout = layout.iloc[:, :3]
-layout.columns = ["pos_ini", "tam", "var"]
-
-layout = layout.dropna()
-
-layout["pos_ini"] = pd.to_numeric(
-    layout["pos_ini"],
-    errors="coerce"
-)
-
-layout["tam"] = pd.to_numeric(
-    layout["tam"],
-    errors="coerce"
-)
-
-layout = layout.dropna()
-
-# construir colspecs
-colspecs = [
-    (
-        int(r.pos_ini) - 1,
-        int(r.pos_ini) - 1 + int(r.tam)
-    )
-    for r in layout.itertuples()
-]
-
-names = layout["var"].astype(str).tolist()
+layout = build_layout_from_input_txt(input_path)
+colspecs, names = build_colspecs(layout)
 
 print("\n" + "=" * 80)
-print("LAYOUT")
+print("LAYOUT DESDE INPUT_TXT")
 print("=" * 80)
-
 print("Variables:", len(names))
 print("Ejemplo:", names[:10])
 
@@ -97,89 +119,59 @@ print("Ejemplo:", names[:10])
 dfs = []
 
 for file in txt_files:
-
     print("\n" + "=" * 80)
     print("PROCESANDO")
     print("=" * 80)
     print(file.name)
 
     try:
-
         df = pd.read_fwf(
             file,
             colspecs=colspecs,
             names=names,
-            encoding="latin1"
+            encoding="latin1",
         )
 
-        # -----------------------------
-        # VALIDACIÓN BÁSICA
-        # -----------------------------
-
-        required = ["Ano", "Trimestre", "V1028", "VD4002"]
-
+        required = ["Ano", "Trimestre", "V1028", "VD4002", "V2007", "V2009", "VD4009"]
         for r in required:
             assert r in df.columns, f"Falta variable {r}"
 
-        assert df.shape[1] > 200, (
-            "No se cargaron suficientes variables"
-        )
+        assert df.shape[1] > 200, "No se cargaron suficientes variables"
 
         print("SHAPE:", df.shape)
-
-        print(
-            "Años:",
-            sorted(df["Ano"].dropna().unique().tolist())
-        )
-
-        print(
-            "Trimestres:",
-            sorted(df["Trimestre"].dropna().unique().tolist())
-        )
+        print("Años:", sorted(df["Ano"].dropna().unique().tolist()))
+        print("Trimestres:", sorted(df["Trimestre"].dropna().unique().tolist()))
 
         dfs.append(df)
 
     except Exception as e:
-
         print(f"\nERROR EN {file.name}")
         print(e)
+
+if not dfs:
+    raise ValueError("No se pudo cargar ningún dataframe")
 
 # =========================================================
 # 5. CONCATENAR
 # =========================================================
 
-if not dfs:
-    raise ValueError("No se pudo cargar ningún dataframe")
-
 print("\n" + "=" * 80)
 print("CONCATENANDO")
 print("=" * 80)
 
-df_final = pd.concat(
-    dfs,
-    ignore_index=True
-)
+df_final = pd.concat(dfs, ignore_index=True)
 
 # =========================================================
 # 6. VALIDACIÓN FINAL
 # =========================================================
 
 print("\nSHAPE FINAL:", df_final.shape)
-
 print("\nAÑOS FINALES")
 print(df_final["Ano"].value_counts().sort_index())
-
 print("\nTRIMESTRES FINALES")
 print(df_final["Trimestre"].value_counts().sort_index())
-
 print("\nCOMBINACIONES AÑO-TRIMESTRE")
-print(
-    df_final[
-        ["Ano", "Trimestre"]
-    ]
-    .drop_duplicates()
-    .sort_values(["Ano", "Trimestre"])
-)
+print(df_final[["Ano", "Trimestre"]].drop_duplicates().sort_values(["Ano", "Trimestre"]))
 
 # =========================================================
 # 7. GUARDAR
@@ -195,19 +187,11 @@ print("\n" + "=" * 80)
 print("GUARDANDO")
 print("=" * 80)
 
-df_final.to_parquet(
-    parquet_path,
-    index=False
-)
-
-df_final.to_csv(
-    csv_path,
-    index=False
-)
+df_final.to_parquet(parquet_path, index=False)
+df_final.to_csv(csv_path, index=False)
 
 print("\n✔ PARQUET:", parquet_path)
 print("✔ CSV:", csv_path)
-
 print("\n" + "=" * 80)
 print("FINALIZADO")
 print("=" * 80)
