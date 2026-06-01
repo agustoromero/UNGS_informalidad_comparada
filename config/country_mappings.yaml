@@ -22,7 +22,7 @@ countries:
     source: PNAD Continua
     filters:
       occupied: 'VD4002 == "Pessoas ocupadas"'
-      geography: "V1022 == 1"
+      geography: "V1022 != 2"
     weight: V1028
     ocupacional:
       asalariado: "VD4009 categorias empregado/domestico/publico"
@@ -54,9 +54,8 @@ countries:
       - caracteristicas
       - fuerza_trabajo
     filters:
-      geography: "CLASE == 1"
-      occupied: "ocupados según módulo de fuerza de trabajo"
-    weight: "fex_c (fallbacks: fex_c_2011, FEX_C, FEX_C_2011, fexp, FEXP)"
+      occupied: "CLASE == 1 (urbana)"
+    weight: fex_c_2011
     ocupacional:
       asalariado: "P6430 in (1,2,3,8)"
       cuentapropia: "P6430 == 4"
