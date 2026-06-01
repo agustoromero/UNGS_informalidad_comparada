@@ -1,0 +1,75 @@
+# Basado en lectura de scripts en precariedad.mundial
+# - scripts/Argentina.R
+# - scripts/Brasil.R
+# - scripts/Mexico.R
+# - scripts/Colombia.R
+# - genera_base_homogenea.R
+
+countries:
+  argentina:
+    source: EPH
+    filters:
+      occupied: "ESTADO == 1"
+    weight: PONDERA
+    ocupacional:
+      asalariado: "CAT_OCUP == 3"
+      cuentapropia: "CAT_OCUP == 2"
+    formalidad:
+      registracion: "PP07H == 1"
+      no_registracion: "PP07H == 2"
+
+  brasil:
+    source: PNAD Continua
+    filters:
+      occupied: 'VD4002 == "Pessoas ocupadas"'
+      geography: "V1022 == 1"
+    weight: V1028
+    ocupacional:
+      asalariado: "VD4009 categorias empregado/domestico/publico"
+      cuentapropia: 'VD4009 == "Conta-própria"'
+    formalidad:
+      registracion: 'VD4009 incluye "com carteira"'
+      previsional: 'VD4012 == "Contribuinte"'
+
+  mexico:
+    source: ENOE
+    joins:
+      - COE1
+      - COE2
+    filters:
+      occupied: "clase2 == 1"
+      geography: "t_loc != 4"
+    weight: fac
+    ocupacional:
+      asalariado: "pos_ocu == 1"
+      cuentapropia: "pos_ocu == 3"
+    formalidad:
+      registracion: "p3j == 1"
+      seguridad_social: "p3m4 == 4"
+
+  colombia:
+    source: GEIH
+    joins:
+      - ocupados
+      - caracteristicas
+      - fuerza_trabajo
+    filters:
+      geography: "CLASE == 1"
+      occupied: "ocupados según módulo de fuerza de trabajo"
+    weight: "fex_c (fallbacks: fex_c_2011, FEX_C, FEX_C_2011, fexp, FEXP)"
+    ocupacional:
+      asalariado: "P6430 in (1,2,3,8)"
+      cuentapropia: "P6430 == 4"
+    formalidad:
+      registracion: "P6440 == 1 & P6450 == 2"
+      seguridad_social: "P6920 == 1"
+
+cross_country_normalization:
+  from_genera_base_homogenea:
+    catocup:
+      Asalariados: Asalariado
+      "Cuenta Propia": "Cuenta propia"
+    sector_force_private_if_catocup:
+      - "Cuenta propia"
+      - Patron
+    sector_domestico_sets_catocup: Asalariado
