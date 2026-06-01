@@ -87,3 +87,14 @@ data/brasil/
 Para 2023 se usa el mismo criterio, por ejemplo `data/brasil/PNADC_012023_*/PNADC_012023.txt`.
 
 Por compatibilidad, si dentro de una carpeta trimestral existe `input_PNADC*.txt` en lugar de `PNADC_*.txt`, el pipeline también lo acepta. En todos los casos, cada carpeta detectada equivale a un trimestre y el ponderador esperado es `V1028`.
+
+## Auditoría de duplicados Brasil / PNADC
+
+Antes de excluir registros duplicados de Brasil, se puede auditar si los duplicados ya existen en los archivos brutos o aparecen durante el pipeline:
+
+```bash
+python -m scripts.diagnostics.audit_brasil_duplicates --year 2018
+python -m scripts.diagnostics.audit_brasil_duplicates --year 2023
+```
+
+La auditoría usa `id_persona = UPA + V1008 + V1014 + V2003`, clasifica duplicados en tipo A/B/C, cruza duplicados por `Ano`/`Trimestre` cuando esas columnas existen, y compara conteos entre bruto y `build_core`. Para evaluar solo urbano, usar `--urban-only` (`V1022 == 1`).
