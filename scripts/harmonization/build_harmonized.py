@@ -7,6 +7,7 @@ CORE_COLUMNS = [
     "pais", "anio", "trimestre", "id", "ponderador",
     "ocupado", "desocupado", "inactivo",
     "asalariado", "cuentapropia", "formal", "informal", "sector",
+    "categoria_ocupacional", "sexo", "edad",
 ]
 
 

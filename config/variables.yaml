@@ -17,6 +17,10 @@ core_variables:
 
   - sector
 
+  - categoria_ocupacional
+  - sexo
+  - edad
+
 rules:
   ocupado:
     definition: "criterio armonizado tipo EPH"

@@ -98,3 +98,25 @@ python -m scripts.diagnostics.audit_brasil_duplicates --year 2023
 ```
 
 La auditoría usa `id_persona = UPA + V1008 + V1014 + V2003`, clasifica duplicados en tipo A/B/C, cruza duplicados por `Ano`/`Trimestre` cuando esas columnas existen, y compara conteos entre bruto y `build_core`. Para evaluar solo urbano, usar `--urban-only` (`V1022 == 1`).
+
+## Cierre metodológico: urbano/rural, ponderadores y tablas
+
+La cobertura geográfica comparable se aplica antes de construir variables core:
+
+| País | Filtro urbano/rural |
+| --- | --- |
+| Argentina | Sin filtro adicional (EPH ya refiere a aglomerados urbanos) |
+| Brasil | `V1022 == 1` |
+| México | `t_loc != 4` |
+| Colombia | `CLASE == 1` |
+
+Los ponderadores usados sin modificar son:
+
+| País | Ponderador |
+| --- | --- |
+| Argentina | `PONDERA` |
+| Brasil | `V1028` |
+| México | `fac` (`FAC` como fallback de nombre) |
+| Colombia | `fex_c` con fallbacks `fex_c_2011`, `FEX_C`, `FEX_C_2011`, `fexp`, `FEXP` según disponibilidad del archivo |
+
+Cada ejecución país-año exporta el dataset armonizado en `outputs/harmonized/{pais}_{anio}.parquet` y `.csv`, y una tabla Excel homogénea en `outputs/tablas/{pais}_{anio}.xlsx`. Las hojas de la tabla final incluyen resumen general, categoría ocupacional, sector, sexo y grupo de edad, con ocupados, asalariados, informales, tasa de ocupación y tasa de informalidad calculadas con el ponderador original.
