@@ -65,3 +65,25 @@ Para ejecución local en Windows, usar sincronización de datos en:
 3. Ejecutar validaciones: `python scripts/checks/run_checks.py`.
 
 Nota: cada script país-año exporta `outputs/harmonized/<COUNTRY>_<YEAR>.parquet`.
+
+## Insumos Brasil / PNAD Contínua
+
+El pipeline **no descarga automáticamente** microdatos de IBGE y **no espera** que los `.txt` estén dentro de `PNADcIBGE-master`. Ese paquete/proyecto sirve como referencia para descarga/lectura en R, pero los datos crudos deben estar sincronizados localmente bajo `data/brasil/`.
+
+La ruta esperada por `scripts/common_pipeline.py` es una carpeta por trimestre con este patrón:
+
+```text
+data/brasil/
+    PNADC_012018_*/
+        PNADC_012018.txt
+    PNADC_022018_*/
+        PNADC_022018.txt
+    PNADC_032018_*/
+        PNADC_032018.txt
+    PNADC_042018_*/
+        PNADC_042018.txt
+```
+
+Para 2023 se usa el mismo criterio, por ejemplo `data/brasil/PNADC_012023_*/PNADC_012023.txt`.
+
+Por compatibilidad, si dentro de una carpeta trimestral existe `input_PNADC*.txt` en lugar de `PNADC_*.txt`, el pipeline también lo acepta. En todos los casos, cada carpeta detectada equivale a un trimestre y el ponderador esperado es `V1028`.

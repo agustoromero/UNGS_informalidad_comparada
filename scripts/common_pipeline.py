@@ -14,9 +14,15 @@ def get_periods(country: str, year: int):
         base = Path("data/brasil")
         periods = {}
         for i, folder in enumerate(sorted(base.glob(f"PNADC_*{year}*")), start=1):
-            txts = list(folder.glob("*.txt"))
+            txts = sorted(folder.glob("PNADC_*.txt")) or sorted(folder.glob("input_PNADC*.txt")) or sorted(folder.glob("*.txt"))
             if txts:
                 periods[i] = txts[0]
+        if not periods:
+            raise FileNotFoundError(
+                f"No se encontraron archivos PNADC para {year}. "
+                "Ruta esperada: data/brasil/PNADC_<trimestre><anio>_*/PNADC_<trimestre><anio>.txt "
+                "(también se acepta input_PNADC*.txt dentro de cada carpeta trimestral)."
+            )
         return periods
     if country == "mexico":
         base = Path("data/mexico")
