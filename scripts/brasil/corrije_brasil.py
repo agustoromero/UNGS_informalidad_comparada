@@ -1,8 +1,11 @@
 from pathlib import Path
 import re
+
 import pandas as pd
 
 base = Path(__file__).resolve().parents[2]
+
+SAS_INPUT_PATH = base / "data" / "brasil" / "Dicionario_e_input_20221031" / "input_PNADC_trimestral.sas"
 
 
 # =========================================================
@@ -61,6 +64,14 @@ def build_colspecs(layout: pd.DataFrame):
     return colspecs, names
 
 
+def get_sas_layout() -> pd.DataFrame:
+    if not SAS_INPUT_PATH.exists():
+        raise FileNotFoundError(
+            f"No existe {SAS_INPUT_PATH}. Se requiere el SAS oficial para generar brasil_raw.parquet."
+        )
+    return build_layout_from_input_txt(SAS_INPUT_PATH)
+
+
 # =========================================================
 # 1. ENCONTRAR TODOS LOS TXT PNADC
 # =========================================================
@@ -80,20 +91,18 @@ for i, f in enumerate(txt_files, 1):
 print("\nTOTAL TXT:", len(txt_files))
 
 # =========================================================
-# 2. ENCONTRAR INPUT_TXT (SAS) Y DICCIONARIO
+# 2. ENCONTRAR EL SAS DE LAYOUT CANÓNICO
 # =========================================================
 
-input_files = sorted(base.rglob("input_PNADC*.txt"))
-if not input_files:
-    raise FileNotFoundError("No se encontró input_PNADC*.txt (layout SAS)")
-
-input_path = input_files[0]
+if not SAS_INPUT_PATH.exists():
+    raise FileNotFoundError(
+        f"No se encontró {SAS_INPUT_PATH}. Se requiere el SAS oficial para generar brasil_raw.parquet."
+    )
 
 print("\n" + "=" * 80)
-print("INPUT TXT (LAYOUT CANÓNICO)")
+print("INPUT SAS (LAYOUT CANÓNICO)")
 print("=" * 80)
-print(input_path)
-
+print(SAS_INPUT_PATH)
 dict_files = sorted(base.rglob("Brasil*dicionario*PNADC*.xls*"))
 if dict_files:
     print("\nDICCIONARIO detectado (solo referencia de etiquetas):")
@@ -103,11 +112,11 @@ if dict_files:
 # 3. CONSTRUIR COLSPECS DESDE INPUT_TXT
 # =========================================================
 
-layout = build_layout_from_input_txt(input_path)
+layout = get_sas_layout()
 colspecs, names = build_colspecs(layout)
 
 print("\n" + "=" * 80)
-print("LAYOUT DESDE INPUT_TXT")
+print("LAYOUT DESDE INPUT_SAS")
 print("=" * 80)
 print("Variables:", len(names))
 print("Ejemplo:", names[:10])

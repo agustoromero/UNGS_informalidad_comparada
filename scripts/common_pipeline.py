@@ -98,14 +98,14 @@ def get_periods(country: str, year: int):
 
     if country == "brasil":
 
-        parquet = Path(
-            "outputs/raw_brasil/brasil_raw.parquet"
-        )
+        urban_parquet = Path("data/intermediate/brasil_urbano.parquet")
+        raw_parquet = Path("outputs/raw_brasil/brasil_raw.parquet")
+
+        parquet = urban_parquet if urban_parquet.exists() else raw_parquet
 
         if not parquet.exists():
-
             raise FileNotFoundError(
-                "No existe outputs/raw_brasil/brasil_raw.parquet"
+                "No existe ninguno de los archivos de Brasil: data/intermediate/brasil_urbano.parquet o outputs/raw_brasil/brasil_raw.parquet"
             )
 
         return {
@@ -214,6 +214,7 @@ def load_period(country: str, src, year=None):
             "V1008",
             "V1014",
             "V2003",
+            "V1022",
             "V1028",
             "VD4002",
             "VD4009",
@@ -323,6 +324,9 @@ def load_period(country: str, src, year=None):
                  "seg_soc",
                  "tue_ppal",
                  "medicasc",
+                 "t_loc",
+                 "t_loc_tri",
+                 "t_loc_men",
                  "fac",
              ]
              if c in sdemt.columns
@@ -368,6 +372,70 @@ def load_period(country: str, src, year=None):
     # -------------------------------------------------------------------------
 
     raise ValueError(country)
+
+
+def apply_geography_filter(country: str, year: int, df: pd.DataFrame) -> pd.DataFrame:
+
+    if country == "argentina":
+        return df
+
+    if country == "brasil":
+        if "V1022" not in df.columns:
+            warnings.warn(
+                "Brasil: no se encontró V1022 para filtrar urbano; se conserva el conjunto actual"
+            )
+            return df
+
+        urban = df[df["V1022"].astype(str).str.strip().eq("1")].copy()
+
+        log(
+            f"Brasil {year}: urbano filtrado {len(urban):,} / {len(df):,} filas"
+        )
+
+        return urban
+
+    if country == "mexico":
+        loc_cols = [
+            c
+            for c in ["t_loc", "t_loc_tri", "t_loc_men"]
+            if c in df.columns
+        ]
+
+        if not loc_cols:
+            warnings.warn(
+                "México: no se encontró t_loc/t_loc_tri/t_loc_men para filtrar urbano; se conserva el conjunto actual"
+            )
+            return df
+
+        loc_col = loc_cols[0]
+        urban = df[
+            pd.to_numeric(df[loc_col], errors="coerce").ne(4)
+        ].copy()
+
+        log(
+            f"México {year}: urbano filtrado {loc_col} != 4 -> {len(urban):,} / {len(df):,} filas"
+        )
+
+        return urban
+
+    if country == "colombia":
+        if "CLASE" in df.columns:
+            urban = df[
+                pd.to_numeric(df["CLASE"], errors="coerce").eq(1)
+            ].copy()
+
+            log(
+                f"Colombia {year}: urbano filtrado CLASE == 1 -> {len(urban):,} / {len(df):,} filas"
+            )
+
+            return urban
+
+        warnings.warn(
+            "Colombia: no se encontró CLASE para filtrar urbano; se conserva el conjunto actual"
+        )
+        return df
+
+    return df
 
 
 # =============================================================================
@@ -485,6 +553,8 @@ def build_core(
             .astype(str)
             .agg("_".join, axis=1)
         )
+
+        out["id"] = df["id"]
 
         # ---------------------------------------------------------------------
         # PONDERADOR
@@ -1099,6 +1169,14 @@ def run_country_year(
             p,
             year,
         )
+
+        raw = apply_geography_filter(country, year, raw)
+
+        if raw.empty:
+            warnings.warn(
+                f"{country.title()} {year} T{t}: datos vacíos luego de aplicar filtro de geografía urbana"
+            )
+            continue
 
         # -------------------------------------------------------------
         # BRASIL

@@ -12,8 +12,6 @@ from pathlib import Path
 
 import pandas as pd
 
-from scripts.common_pipeline import get_periods, load_period
-
 REQUIRED_COLUMNS = ["V1022", "V1028", "V2007", "V2009", "VD4001", "VD4002", "VD4009", "VD4012"]
 DEFAULT_YEARS = [2018, 2023]
 INTERMEDIATE_DIR = Path("data/intermediate")
@@ -22,6 +20,7 @@ RAW_OUTPUT = INTERMEDIATE_DIR / "brasil_raw.parquet"
 URBAN_OUTPUT = INTERMEDIATE_DIR / "brasil_urbano.parquet"
 AUDIT_OUTPUT = OUTPUT_DIR / "auditoria_urbano_rural.csv"
 WEIGHTS_OUTPUT = OUTPUT_DIR / "validacion_pesos.xlsx"
+SAS_INPUT_PATH = Path("data") / "brasil" / "Dicionario_e_input_20221031" / "input_PNADC_trimestral.sas"
 
 
 def require_columns(df: pd.DataFrame, columns: list[str]) -> None:
@@ -36,19 +35,40 @@ def is_urban(series: pd.Series) -> pd.Series:
 
 
 def load_brasil_raw(years: list[int]) -> pd.DataFrame:
-    frames = []
-    for year in years:
-        periods = get_periods("brasil", year)
-        for trimestre in sorted(periods):
-            df = load_period("brasil", periods[trimestre]).copy()
-            df["anio"] = year
-            df["trimestre"] = trimestre
-            df["source_path"] = str(periods[trimestre])
-            require_columns(df, REQUIRED_COLUMNS)
-            frames.append(df)
-    if not frames:
-        raise FileNotFoundError(f"No se encontraron archivos PNADC para años {years}")
-    return pd.concat(frames, ignore_index=True)
+
+    raw_path = Path("outputs/raw_brasil/brasil_raw.parquet")
+
+    if not SAS_INPUT_PATH.exists():
+        raise FileNotFoundError(
+            f"No existe {SAS_INPUT_PATH}. Se requiere el SAS oficial para asegurarse de que brasil_raw.parquet se genere con el layout canónico."
+        )
+
+    if not raw_path.exists():
+        raise FileNotFoundError(
+            f"No existe {raw_path}"
+        )
+
+    df = pd.read_parquet(raw_path)
+
+    require_columns(df, REQUIRED_COLUMNS)
+
+    df = df[
+        pd.to_numeric(df["Ano"], errors="coerce").isin(years)
+    ].copy()
+
+    df["anio"] = pd.to_numeric(
+        df["Ano"],
+        errors="coerce"
+    )
+
+    df["trimestre"] = pd.to_numeric(
+        df["Trimestre"],
+        errors="coerce"
+    )
+
+    df["source_path"] = str(raw_path)
+
+    return df
 
 
 def build_urban_audit(raw: pd.DataFrame, urban: pd.DataFrame) -> pd.DataFrame:
