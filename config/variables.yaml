@@ -4,16 +4,28 @@ core_variables:
   - trimestre
   - id
   - ponderador
+  - sexo
+  - edad
+  - nivel_educativo
+  - educacion_superior
 
   - ocupado
   - desocupado
   - inactivo
 
   - asalariado
+  - asalariado_publico
+  - asalariado_privado
   - cuentapropia
+  - patron
+  - trab_familiar
+  - empleo_domestico
 
   - formal
   - informal
+  - small
+  - patron_micro
+  - asalariado_privado_micro
 
   - sector
 

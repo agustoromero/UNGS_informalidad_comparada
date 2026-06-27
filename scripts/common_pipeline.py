@@ -22,13 +22,25 @@ COMMON_COLUMNS = [
     "trimestre",
     "id",
     "ponderador",
+    "sexo",
+    "edad",
+    "nivel_educativo",
+    "educacion_superior",
     "ocupado",
     "desocupado",
     "inactivo",
     "asalariado",
+    "asalariado_publico",
+    "asalariado_privado",
     "cuentapropia",
+    "patron",
+    "trab_familiar",
+    "empleo_domestico",
     "informal",
     "formal",
+    "small",
+    "patron_micro",
+    "asalariado_privado_micro",
     "sector",
 ]
 
@@ -67,6 +79,114 @@ def summarize_duplicate_ids(df: pd.DataFrame, id_col, weight_col: str, label: st
         f"{label}: {dup_rows:,} filas con ID duplicado "
         f"({dup_share:.2%} del trimestre); "
         f"{weight_variation:.2%} de IDs duplicados con V1028 variable"
+    )
+
+
+def empty_series(df: pd.DataFrame, value=pd.NA) -> pd.Series:
+
+    return pd.Series(value, index=df.index)
+
+
+def numeric_column(df: pd.DataFrame, column: str, default=pd.NA) -> pd.Series:
+
+    if column not in df.columns:
+        return empty_series(df, default)
+
+    return pd.to_numeric(
+        df[column],
+        errors="coerce",
+    )
+
+
+def first_numeric(df: pd.DataFrame, columns: list[str], default=pd.NA) -> pd.Series:
+
+    for column in columns:
+        if column in df.columns:
+            return numeric_column(df, column, default)
+
+    return empty_series(df, default)
+
+
+def label_codes(codes: pd.Series, mapping: dict[int, str]) -> pd.Series:
+
+    labels = codes.map(mapping)
+
+    return labels.astype("string")
+
+
+def normalize_binary(mask: pd.Series) -> pd.Series:
+
+    return mask.fillna(False).astype(int)
+
+
+def education_argentina(df: pd.DataFrame) -> pd.Series:
+
+    nivel = numeric_column(df, "NIVEL_ED")
+
+    return label_codes(
+        nivel,
+        {
+            1: "Primario incompleto",
+            2: "Primario completo",
+            3: "Secundario incompleto",
+            4: "Secundario completo",
+            5: "Terciario",
+            6: "Universitario",
+            7: "Sin instruccion",
+        },
+    )
+
+
+def education_brasil(df: pd.DataFrame) -> pd.Series:
+
+    nivel = numeric_column(df, "VD3004")
+
+    return label_codes(
+        nivel,
+        {
+            1: "Sin instruccion",
+            2: "Primario incompleto",
+            3: "Primario completo",
+            4: "Secundario incompleto",
+            5: "Secundario completo",
+            6: "Terciario",
+            7: "Universitario",
+        },
+    )
+
+
+def education_mexico(df: pd.DataFrame) -> pd.Series:
+
+    nivel = first_numeric(df, ["niv_ins", "NIV_INS"])
+
+    return label_codes(
+        nivel,
+        {
+            0: "Sin instruccion",
+            1: "Primario incompleto",
+            2: "Primario completo",
+            3: "Secundario completo",
+            4: "Terciario",
+            5: "Universitario",
+            6: "Posgrado",
+        },
+    )
+
+
+def education_colombia(df: pd.DataFrame) -> pd.Series:
+
+    nivel = numeric_column(df, "P6210")
+
+    return label_codes(
+        nivel,
+        {
+            1: "Sin instruccion",
+            2: "Primario incompleto",
+            3: "Primario completo",
+            4: "Secundario incompleto",
+            5: "Secundario completo",
+            6: "Universitario",
+        },
     )
 
 
@@ -215,6 +335,9 @@ def load_period(country: str, src, year=None):
             "V2003",
             "V1022",
             "V1028",
+            "V2007",
+            "V2009",
+            "VD3004",
             "VD4002",
             "VD4009",
             "VD4012",
@@ -321,11 +444,19 @@ def load_period(country: str, src, year=None):
                  "emp_ppal",
                  "seg_soc",
                  "tue_ppal",
+                 "tue1",
+                 "tue2",
+                 "tue3",
                  "medicasc",
                  "t_loc",
                  "t_loc_tri",
                  "t_loc_men",
                  "fac",
+                 "sex",
+                 "eda",
+                 "niv_ins",
+                 "domestico",
+                 "emple7c",
              ]
              if c in sdemt.columns
          ]
@@ -467,6 +598,8 @@ def build_core(
             + df["COMPONENTE"].astype(str)
         )
 
+        out["id"] = df["id"]
+
         out["ponderador"] = df["PONDERA"]
 
         estado = df["ESTADO"]
@@ -485,6 +618,28 @@ def build_core(
             )
             .isin([1, 2, 3, 4, 5, 6])
         )
+
+        sector_raw = numeric_column(df, "PP04A")
+        domestic_raw = numeric_column(df, "PP04B1")
+
+        out["sexo"] = label_codes(
+            numeric_column(df, "CH04"),
+            {
+                1: "Varon",
+                2: "Mujer",
+            },
+        )
+        out["edad"] = numeric_column(df, "CH06")
+        out["nivel_educativo"] = education_argentina(df)
+        out["educacion_superior"] = normalize_binary(
+            numeric_column(df, "NIVEL_ED").eq(6)
+        )
+
+        empleo_domestico = domestic_raw.eq(1)
+        asalariado_publico = cat.eq(3) & sector_raw.eq(1) & ~empleo_domestico
+        asalariado_privado = cat.eq(3) & sector_raw.isin([2, 3]) & ~empleo_domestico
+        patron = cat.eq(1)
+        trab_familiar = cat.eq(4)
 
     # -------------------------------------------------------------------------
     # BRASIL
@@ -538,6 +693,25 @@ def build_core(
             df.get("V4018", 99)
             .isin([1, 2])
         )
+
+        out["sexo"] = label_codes(
+            numeric_column(df, "V2007"),
+            {
+                1: "Varon",
+                2: "Mujer",
+            },
+        )
+        out["edad"] = numeric_column(df, "V2009")
+        out["nivel_educativo"] = education_brasil(df)
+        out["educacion_superior"] = normalize_binary(
+            numeric_column(df, "VD3004").isin([7])
+        )
+
+        empleo_domestico = cat.isin([3, 4])
+        asalariado_publico = cat.isin([5, 6, 7])
+        asalariado_privado = cat.isin([1, 2])
+        patron = cat.eq(8)
+        trab_familiar = cat.eq(10)
 
     
     # -------------------------------------------------------------------------
@@ -695,6 +869,27 @@ def build_core(
                 .isin([1, 2, 3])
             )
 
+        sector_mx = first_numeric(df, ["tue2"])
+
+        out["sexo"] = label_codes(
+            first_numeric(df, ["sex"]),
+            {
+                1: "Varon",
+                2: "Mujer",
+            },
+        )
+        out["edad"] = first_numeric(df, ["eda"])
+        out["nivel_educativo"] = education_mexico(df)
+        out["educacion_superior"] = normalize_binary(
+            first_numeric(df, ["niv_ins", "NIV_INS"]).ge(4)
+        )
+
+        empleo_domestico = sector_mx.eq(6) | first_numeric(df, ["domestico"]).eq(1)
+        asalariado_publico = cat.eq(1) & sector_mx.eq(4) & ~empleo_domestico
+        asalariado_privado = cat.eq(1) & sector_mx.isin([1, 2, 3, 5, 7]) & ~empleo_domestico
+        patron = cat.eq(2)
+        trab_familiar = cat.eq(4)
+
 
     # -------------------------------------------------------------------------
     # COLOMBIA
@@ -847,6 +1042,25 @@ def build_core(
             )
              .isin([1, 2, 3, 4])
         )    
+
+        out["sexo"] = label_codes(
+            numeric_column(df, "P6020"),
+            {
+                1: "Varon",
+                2: "Mujer",
+            },
+        )
+        out["edad"] = numeric_column(df, "P6040")
+        out["nivel_educativo"] = education_colombia(df)
+        out["educacion_superior"] = normalize_binary(
+            numeric_column(df, "P6210").eq(6)
+        )
+
+        empleo_domestico = cat.eq(3)
+        asalariado_publico = cat.eq(2)
+        asalariado_privado = cat.isin([1, 8])
+        patron = cat.eq(5)
+        trab_familiar = cat.isin([6, 7])
     
     # =========================================================================
     # IDS
@@ -988,6 +1202,56 @@ def build_core(
         )
 
     ).astype(int)
+
+    is_occupied = out["ocupado"].eq(1)
+
+    out["asalariado_publico"] = normalize_binary(
+        is_occupied
+        &
+        asalariado_publico
+    )
+
+    out["asalariado_privado"] = normalize_binary(
+        is_occupied
+        &
+        asalariado_privado
+    )
+
+    out["patron"] = normalize_binary(
+        is_occupied
+        &
+        patron
+    )
+
+    out["trab_familiar"] = normalize_binary(
+        is_occupied
+        &
+        trab_familiar
+    )
+
+    out["empleo_domestico"] = normalize_binary(
+        is_occupied
+        &
+        empleo_domestico
+    )
+
+    out["small"] = normalize_binary(
+        is_occupied
+        &
+        small
+    )
+
+    out["patron_micro"] = normalize_binary(
+        out["patron"].eq(1)
+        &
+        out["small"].eq(1)
+    )
+
+    out["asalariado_privado_micro"] = normalize_binary(
+        out["asalariado_privado"].eq(1)
+        &
+        out["small"].eq(1)
+    )
 
     # =========================================================================
     # INFORMALIDAD

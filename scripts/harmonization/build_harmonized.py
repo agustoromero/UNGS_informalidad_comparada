@@ -17,7 +17,11 @@ def main():
     files = [
         f
         for f in files
-        if f.name != "harmonized_all.parquet"
+        if f.name
+        not in {
+            "harmonized.parquet",
+            "harmonized_all.parquet",
+        }
     ]
 
     if not files:
