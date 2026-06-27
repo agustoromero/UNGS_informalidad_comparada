@@ -1,34 +1,44 @@
 from pathlib import Path
 import re
-
 import pandas as pd
 
 base = Path(__file__).resolve().parents[2]
 
-SAS_INPUT_PATH = base / "data" / "brasil" / "Dicionario_e_input_20221031" / "input_PNADC_trimestral.sas"
-
+SAS_INPUT_PATH = (
+    base
+    / "data"
+    / "brasil"
+    / "Dicionario_e_input_20221031"
+    / "input_PNADC_trimestral.sas"
+)
 
 # =========================================================
 # HELPERS
 # =========================================================
 
 def build_layout_from_input_txt(input_txt: Path) -> pd.DataFrame:
-    """
-    Construye layout FWF desde input SAS oficial (fuente canónica).
-    Formato esperado por línea: @<start> <var> <fmt>
-    donde <fmt> puede incluir $ (carácter) y ancho numérico.
-    """
+
     rows = []
 
-    pattern = re.compile(r"^@\s*(\d+)\s+([A-Za-z0-9_]+)\s+([^;\s]+)")
+    pattern = re.compile(
+        r"^@\s*(\d+)\s+([A-Za-z0-9_]+)\s+([^;\s]+)"
+    )
 
-    with input_txt.open("r", encoding="latin1", errors="ignore") as fh:
+    with input_txt.open(
+        "r",
+        encoding="latin1",
+        errors="ignore"
+    ) as fh:
+
         for line in fh:
+
             raw = line.strip()
+
             if not raw.startswith("@"):
                 continue
 
             m = pattern.match(raw)
+
             if not m:
                 continue
 
@@ -36,171 +46,226 @@ def build_layout_from_input_txt(input_txt: Path) -> pd.DataFrame:
             var = m.group(2)
             fmt = m.group(3)
 
-            width_match = re.search(r"(\d+)", fmt)
+            width_match = re.search(
+                r"(\d+)",
+                fmt
+            )
+
             if not width_match:
                 continue
 
             width = int(width_match.group(1))
+
             if width <= 0:
                 continue
 
-            rows.append((start, width, var))
+            rows.append(
+                (start, width, var)
+            )
 
     if not rows:
-        raise ValueError(f"No se pudo parsear layout desde {input_txt}")
+        raise ValueError(
+            f"No se pudo parsear {input_txt}"
+        )
 
-    layout = pd.DataFrame(rows, columns=["pos_ini", "tam", "var"])
-    layout = layout.drop_duplicates(subset=["var"], keep="first")
-    layout = layout.sort_values(["pos_ini", "var"]).reset_index(drop=True)
+    layout = pd.DataFrame(
+        rows,
+        columns=[
+            "pos_ini",
+            "tam",
+            "var"
+        ]
+    )
+
+    layout = (
+        layout
+        .drop_duplicates(
+            subset=["var"],
+            keep="first"
+        )
+        .sort_values("pos_ini")
+        .reset_index(drop=True)
+    )
+
     return layout
 
 
-def build_colspecs(layout: pd.DataFrame):
+def build_colspecs(layout):
+
     colspecs = [
-        (int(r.pos_ini) - 1, int(r.pos_ini) - 1 + int(r.tam))
+        (
+            int(r.pos_ini) - 1,
+            int(r.pos_ini) - 1 + int(r.tam)
+        )
         for r in layout.itertuples()
     ]
-    names = layout["var"].astype(str).tolist()
+
+    names = (
+        layout["var"]
+        .astype(str)
+        .tolist()
+    )
+
     return colspecs, names
 
 
-def get_sas_layout() -> pd.DataFrame:
-    if not SAS_INPUT_PATH.exists():
-        raise FileNotFoundError(
-            f"No existe {SAS_INPUT_PATH}. Se requiere el SAS oficial para generar brasil_raw.parquet."
-        )
-    return build_layout_from_input_txt(SAS_INPUT_PATH)
-
-
 # =========================================================
-# 1. ENCONTRAR TODOS LOS TXT PNADC
-# =========================================================
-
-txt_files = sorted(base.rglob("PNADC_*.txt"))
-
-if not txt_files:
-    raise FileNotFoundError("No se encontraron archivos PNADC_*.txt")
-
-print("=" * 80)
-print("TXT ENCONTRADOS")
-print("=" * 80)
-
-for i, f in enumerate(txt_files, 1):
-    print(f"{i}. {f}")
-
-print("\nTOTAL TXT:", len(txt_files))
-
-# =========================================================
-# 2. ENCONTRAR EL SAS DE LAYOUT CANÓNICO
+# VALIDACIÓN LAYOUT
 # =========================================================
 
 if not SAS_INPUT_PATH.exists():
+
     raise FileNotFoundError(
-        f"No se encontró {SAS_INPUT_PATH}. Se requiere el SAS oficial para generar brasil_raw.parquet."
+        f"No existe {SAS_INPUT_PATH}"
     )
 
-print("\n" + "=" * 80)
-print("INPUT SAS (LAYOUT CANÓNICO)")
+layout = build_layout_from_input_txt(
+    SAS_INPUT_PATH
+)
+
+colspecs, names = build_colspecs(
+    layout
+)
+
 print("=" * 80)
-print(SAS_INPUT_PATH)
-dict_files = sorted(base.rglob("Brasil*dicionario*PNADC*.xls*"))
-if dict_files:
-    print("\nDICCIONARIO detectado (solo referencia de etiquetas):")
-    print(dict_files[0])
-
-# =========================================================
-# 3. CONSTRUIR COLSPECS DESDE INPUT_TXT
-# =========================================================
-
-layout = get_sas_layout()
-colspecs, names = build_colspecs(layout)
-
-print("\n" + "=" * 80)
-print("LAYOUT DESDE INPUT_SAS")
+print("LAYOUT")
 print("=" * 80)
-print("Variables:", len(names))
-print("Ejemplo:", names[:10])
+
+print(
+    "variables:",
+    len(names)
+)
+
+print(
+    "ultima posicion:",
+    max(e for _, e in colspecs)
+)
 
 # =========================================================
-# 4. LEER TODOS LOS TXT
+# BUSCAR TXT
 # =========================================================
 
-dfs = []
+txt_files = sorted(
+    base.rglob("PNADC_*.txt")
+)
+
+if not txt_files:
+
+    raise FileNotFoundError(
+        "No se encontraron TXT PNADC"
+    )
+
+print("\nTXT encontrados:")
+
+for f in txt_files:
+    print(f)
+
+# =========================================================
+# PROCESAR UNO POR UNO
+# =========================================================
 
 for file in txt_files:
-    print("\n" + "=" * 80)
-    print("PROCESANDO")
-    print("=" * 80)
-    print(file.name)
 
-    try:
-        df = pd.read_fwf(
-            file,
-            colspecs=colspecs,
-            names=names,
-            encoding="latin1",
+    print("\n" + "=" * 80)
+    print(file.name)
+    print("=" * 80)
+
+    df = pd.read_fwf(
+        file,
+        colspecs=colspecs,
+        names=names,
+        encoding="latin1"
+    )
+
+    print(
+        "shape:",
+        df.shape
+    )
+
+    required = [
+        "Ano",
+        "Trimestre",
+        "V1028"
+    ]
+
+    for var in required:
+
+        if var not in df.columns:
+
+            raise ValueError(
+                f"Falta {var}"
+            )
+
+    anos = (
+        df["Ano"]
+        .dropna()
+        .unique()
+        .tolist()
+    )
+
+    trimestres = (
+        df["Trimestre"]
+        .dropna()
+        .unique()
+        .tolist()
+    )
+
+    print(
+        "años:",
+        anos
+    )
+
+    print(
+        "trimestres:",
+        trimestres
+    )
+
+    if len(anos) != 1:
+
+        raise ValueError(
+            f"{file.name} tiene múltiples años"
         )
 
-        required = ["Ano", "Trimestre", "V1028", "VD4002", "V2007", "V2009", "VD4009"]
-        for r in required:
-            assert r in df.columns, f"Falta variable {r}"
+    if len(trimestres) != 1:
 
-        assert df.shape[1] > 200, "No se cargaron suficientes variables"
+        raise ValueError(
+            f"{file.name} tiene múltiples trimestres"
+        )
 
-        print("SHAPE:", df.shape)
-        print("Años:", sorted(df["Ano"].dropna().unique().tolist()))
-        print("Trimestres:", sorted(df["Trimestre"].dropna().unique().tolist()))
+    ano = int(anos[0])
+    trimestre = int(trimestres[0])
 
-        dfs.append(df)
+    print(
+        "ponderador:",
+        df["V1028"].sum()
+    )
 
-    except Exception as e:
-        print(f"\nERROR EN {file.name}")
-        print(e)
+    out_dir = (
+        base
+        / "data"
+        / "brasil_clean"
+        / str(ano)
+    )
 
-if not dfs:
-    raise ValueError("No se pudo cargar ningún dataframe")
+    out_dir.mkdir(
+        parents=True,
+        exist_ok=True
+    )
 
-# =========================================================
-# 5. CONCATENAR
-# =========================================================
+    out_file = (
+        out_dir
+        / f"T{trimestre}.parquet"
+    )
 
-print("\n" + "=" * 80)
-print("CONCATENANDO")
-print("=" * 80)
+    df.to_parquet(
+        out_file,
+        index=False
+    )
 
-df_final = pd.concat(dfs, ignore_index=True)
+    print(
+        f"guardado -> {out_file}"
+    )
 
-# =========================================================
-# 6. VALIDACIÓN FINAL
-# =========================================================
-
-print("\nSHAPE FINAL:", df_final.shape)
-print("\nAÑOS FINALES")
-print(df_final["Ano"].value_counts().sort_index())
-print("\nTRIMESTRES FINALES")
-print(df_final["Trimestre"].value_counts().sort_index())
-print("\nCOMBINACIONES AÑO-TRIMESTRE")
-print(df_final[["Ano", "Trimestre"]].drop_duplicates().sort_values(["Ano", "Trimestre"]))
-
-# =========================================================
-# 7. GUARDAR
-# =========================================================
-
-out = base / "outputs" / "raw_brasil"
-out.mkdir(parents=True, exist_ok=True)
-
-parquet_path = out / "brasil_raw.parquet"
-csv_path = out / "brasil_raw.csv"
-
-print("\n" + "=" * 80)
-print("GUARDANDO")
-print("=" * 80)
-
-df_final.to_parquet(parquet_path, index=False)
-df_final.to_csv(csv_path, index=False)
-
-print("\n✔ PARQUET:", parquet_path)
-print("✔ CSV:", csv_path)
 print("\n" + "=" * 80)
 print("FINALIZADO")
 print("=" * 80)

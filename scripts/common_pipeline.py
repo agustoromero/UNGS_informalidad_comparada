@@ -98,23 +98,22 @@ def get_periods(country: str, year: int):
 
     if country == "brasil":
 
-        urban_parquet = Path("data/intermediate/brasil_urbano.parquet")
-        raw_parquet = Path("outputs/raw_brasil/brasil_raw.parquet")
+        base = Path("data/brasil_clean") / str(year)
 
-        parquet = urban_parquet if urban_parquet.exists() else raw_parquet
-
-        if not parquet.exists():
-            raise FileNotFoundError(
-                "No existe ninguno de los archivos de Brasil: data/intermediate/brasil_urbano.parquet o outputs/raw_brasil/brasil_raw.parquet"
-            )
-
-        return {
-            1: parquet,
-            2: parquet,
-            3: parquet,
-            4: parquet,
+        files = {
+            1: base / "T1.parquet",
+            2: base / "T2.parquet",
+            3: base / "T3.parquet",
+            4: base / "T4.parquet",
         }
 
+        for t, f in files.items():
+            if not f.exists():
+                raise FileNotFoundError(
+                    f"No existe {f}"
+                )
+
+        return files
     # -------------------------------------------------------------------------
     # MEXICO
     # -------------------------------------------------------------------------
@@ -224,8 +223,7 @@ def load_period(country: str, src, year=None):
 
         df = pd.read_parquet(
             src,
-            columns=needed,
-            filters=[("Ano", "==", year)],
+            columns=needed
         )
 
         df["Ano"] = (
@@ -1184,21 +1182,15 @@ def run_country_year(
 
         if country == "brasil":
 
-            raw_t = raw[
-                raw["Trimestre"] == t
-            ].copy()
-
-            if raw_t.empty:
-
-                warnings.warn(
-                    f"Brasil {year} T{t} vacío"
-                )
-
-                continue
-
             summarize_duplicate_ids(
-                raw_t,
-                id_col=["UF", "UPA", "V1008", "V1014", "V2003"],
+                raw,
+                id_col=[
+                    "UF",
+                    "UPA",
+                    "V1008",
+                    "V1014",
+                    "V2003",
+                ],
                 weight_col="V1028",
                 label=f"Brasil {year} T{t}",
             )
@@ -1207,9 +1199,8 @@ def run_country_year(
                 country,
                 year,
                 t,
-                raw_t,
+                raw,
             )
-
         else:
 
             core = build_core(
