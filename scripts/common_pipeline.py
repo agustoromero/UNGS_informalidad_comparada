@@ -175,7 +175,7 @@ def education_mexico(df: pd.DataFrame) -> pd.Series:
 
 def education_colombia(df: pd.DataFrame) -> pd.Series:
 
-    nivel = numeric_column(df, "P6210")
+    nivel = first_numeric(df, ["P6210", "P3042"])
 
     return label_codes(
         nivel,
@@ -185,8 +185,81 @@ def education_colombia(df: pd.DataFrame) -> pd.Series:
             3: "Primario completo",
             4: "Secundario incompleto",
             5: "Secundario completo",
-            6: "Universitario",
+            6: "Terciario",
+            7: "Terciario",
+            8: "Terciario",
+            9: "Universitario",
+            10: "Universitario",
+            11: "Universitario",
+            12: "Universitario",
+            13: "Universitario",
         },
+    )
+
+
+def enrich_colombia_2023_demographics(df: pd.DataFrame) -> pd.DataFrame:
+
+    needed = {"P3271", "P6040", "P3042"}
+
+    if needed.issubset(df.columns):
+        return df
+
+    if "MES_NOMBRE" not in df.columns:
+        return df
+
+    base = Path("data/colombia")
+    keys = [
+        "DIRECTORIO",
+        "SECUENCIA_P",
+        "ORDEN",
+    ]
+    frames = []
+
+    for month in sorted(df["MES_NOMBRE"].dropna().unique()):
+        source = (
+            base
+            / str(month)
+            / str(month)
+            / "CSV"
+            / "CSV"
+            / "Características generales, seguridad social en salud y educación.CSV"
+        )
+
+        if not source.exists():
+            warnings.warn(
+                f"Colombia 2023: no se encontró archivo de características para {month}"
+            )
+            continue
+
+        keep = [
+            *keys,
+            "P3271",
+            "P6040",
+            "P3042",
+        ]
+
+        frames.append(
+            pd.read_csv(
+                source,
+                sep=";",
+                encoding="latin1",
+                usecols=lambda column: column in keep,
+                low_memory=False,
+            )
+        )
+
+    if not frames:
+        return df
+
+    demographics = pd.concat(
+        frames,
+        ignore_index=True,
+    ).drop_duplicates(keys)
+
+    return df.merge(
+        demographics,
+        on=keys,
+        how="left",
     )
 
 
@@ -496,7 +569,12 @@ def load_period(country: str, src, year=None):
 
         log(f"Leyendo parquet Colombia: {src.name}")
 
-        return pd.read_parquet(src)
+        df = pd.read_parquet(src)
+
+        if year == 2023:
+            df = enrich_colombia_2023_demographics(df)
+
+        return df
 
     # -------------------------------------------------------------------------
 
@@ -1027,8 +1105,53 @@ def build_core(
         # tamaño empresa
         # ---------------------------------------------------------------------
 
-        p6870 = df.get(
-             "P6870",
+        p6870 = first_numeric(
+             df,
+             ["P6870", "P3069"],
+             default=99,
+        )
+
+        if "P3069" in df.columns and "P6870" not in df.columns:
+            small_values = [1, 2, 3, 4, 5]
+        else:
+            small_values = [1, 2, 3, 4]
+
+        small = (
+            p6870
+             .isin(small_values)
+        )
+
+        out["sexo"] = label_codes(
+            first_numeric(df, ["P6020", "P3271"]),
+            {
+                1: "Varon",
+                2: "Mujer",
+            },
+        )
+        out["edad"] = numeric_column(df, "P6040")
+        out["nivel_educativo"] = education_colombia(df)
+        out["educacion_superior"] = normalize_binary(
+            first_numeric(df, ["P6210", "P3042"]).isin([6, 7, 8, 9, 10, 11, 12, 13])
+        )
+
+        empleo_domestico = cat.eq(3)
+        asalariado_publico = cat.eq(2)
+        asalariado_privado = cat.isin([1, 8])
+        patron = cat.eq(5)
+        trab_familiar = cat.isin([6, 7])
+    
+    # =========================================================================
+    # IDS
+    # =========================================================================
+        out["id"] = tmp["id"]
+        out["ponderador"] = tmp["ponderador"]
+        df = tmp
+        
+    # =========================================================================
+    # CONDICION ACTIVIDAD
+    # =========================================================================
+
+    if country == "mexico":
              pd.Series(
                  99,
                  index=df.index,

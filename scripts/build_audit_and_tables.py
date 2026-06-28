@@ -240,17 +240,15 @@ def annual_from_quarters(quarterly: pd.DataFrame, keys: list[str]) -> pd.DataFra
     if "pct" in quarterly.columns:
         value_cols.append("pct")
 
-    group_cols = ["pais", "anio", *keys]
-
-    period_counts = (
+    base_period_counts = (
         quarterly
-        .groupby(group_cols, dropna=False)["trimestre"]
+        .groupby(["pais", "anio"], dropna=False)["trimestre"]
         .nunique()
         .reset_index(name="periodos_promediados")
     )
 
-    incomplete = period_counts[
-        period_counts["periodos_promediados"].ne(4)
+    incomplete = base_period_counts[
+        base_period_counts["periodos_promediados"].ne(4)
     ]
 
     if not incomplete.empty:
@@ -259,11 +257,42 @@ def annual_from_quarters(quarterly: pd.DataFrame, keys: list[str]) -> pd.DataFra
             f"{incomplete.to_dict(orient='records')}"
         )
 
+    group_cols = ["pais", "anio", *keys]
+    complete_periods = quarterly[
+        ["pais", "anio", "trimestre"]
+    ].drop_duplicates()
+    complete_groups = quarterly[group_cols].drop_duplicates()
+
+    complete_quarterly = (
+        complete_groups
+        .merge(
+            complete_periods,
+            on=["pais", "anio"],
+            how="left",
+            validate="many_to_many",
+        )
+        .merge(
+            quarterly,
+            on=[*group_cols, "trimestre"],
+            how="left",
+            validate="one_to_one",
+        )
+    )
+
+    complete_quarterly[value_cols] = complete_quarterly[value_cols].fillna(0)
+
     annual = (
-        quarterly
+        complete_quarterly
         .groupby(group_cols, dropna=False)[value_cols]
         .mean()
         .reset_index()
+    )
+
+    period_counts = (
+        complete_quarterly
+        .groupby(group_cols, dropna=False)["trimestre"]
+        .nunique()
+        .reset_index(name="periodos_promediados")
     )
 
     annual = annual.merge(
