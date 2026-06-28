@@ -1147,51 +1147,7 @@ def build_core(
         out["ponderador"] = tmp["ponderador"]
         df = tmp
         
-    # =========================================================================
-    # CONDICION ACTIVIDAD
-    # =========================================================================
-
-    if country == "mexico":
-             pd.Series(
-                 99,
-                 index=df.index,
-            ),
-        )
-
-        small = (
-            pd.to_numeric(
-             p6870,
-             errors="coerce",
-            )
-             .isin([1, 2, 3, 4])
-        )    
-
-        out["sexo"] = label_codes(
-            numeric_column(df, "P6020"),
-            {
-                1: "Varon",
-                2: "Mujer",
-            },
-        )
-        out["edad"] = numeric_column(df, "P6040")
-        out["nivel_educativo"] = education_colombia(df)
-        out["educacion_superior"] = normalize_binary(
-            numeric_column(df, "P6210").eq(6)
-        )
-
-        empleo_domestico = cat.eq(3)
-        asalariado_publico = cat.eq(2)
-        asalariado_privado = cat.isin([1, 8])
-        patron = cat.eq(5)
-        trab_familiar = cat.isin([6, 7])
-    
-    # =========================================================================
-    # IDS
-    # =========================================================================
-        out["id"] = tmp["id"]
-        out["ponderador"] = tmp["ponderador"]
-        df = tmp
-        
+     
     # =========================================================================
     # CONDICION ACTIVIDAD
     # =========================================================================
