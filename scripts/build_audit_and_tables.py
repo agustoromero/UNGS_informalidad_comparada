@@ -240,14 +240,38 @@ def annual_from_quarters(quarterly: pd.DataFrame, keys: list[str]) -> pd.DataFra
     if "pct" in quarterly.columns:
         value_cols.append("pct")
 
+    group_cols = ["pais", "anio", *keys]
+
+    period_counts = (
+        quarterly
+        .groupby(group_cols, dropna=False)["trimestre"]
+        .nunique()
+        .reset_index(name="periodos_promediados")
+    )
+
+    incomplete = period_counts[
+        period_counts["periodos_promediados"].ne(4)
+    ]
+
+    if not incomplete.empty:
+        raise ValueError(
+            "No se pueden calcular cuadros anuales con trimestres incompletos: "
+            f"{incomplete.to_dict(orient='records')}"
+        )
+
     annual = (
         quarterly
-        .groupby(["pais", "anio", *keys], dropna=False)[value_cols]
+        .groupby(group_cols, dropna=False)[value_cols]
         .mean()
         .reset_index()
     )
 
-    annual["periodos_promediados"] = 4
+    annual = annual.merge(
+        period_counts,
+        on=group_cols,
+        how="left",
+        validate="one_to_one",
+    )
 
     return annual
 
