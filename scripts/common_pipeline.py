@@ -1023,6 +1023,8 @@ def build_core(
              "FEX_DPTO_C",
              "FEX_C",
               "FEX",
+             "fex_c_2011",
+             "fex_c_2011_ft",
         ]
 
         available = [
@@ -1069,12 +1071,23 @@ def build_core(
         # 3 inactivo
         # ---------------------------------------------------------------------
 
-        estado = df.get(
-             "OCI",
-             pd.Series(pd.NA, index=df.index)
-            )
+        ocupado_raw = pd.to_numeric(
+            df.get("OCI", pd.Series(pd.NA, index=df.index)),
+            errors="coerce",
+        )
+        desocupado_raw = pd.to_numeric(
+            df.get("DSI", pd.Series(pd.NA, index=df.index)),
+            errors="coerce",
+        )
+        inactivo_raw = pd.to_numeric(
+            df.get("INI", pd.Series(pd.NA, index=df.index)),
+            errors="coerce",
+        )
 
-        estado = pd.to_numeric(estado, errors="coerce")
+        estado = pd.Series(pd.NA, index=df.index, dtype="Float64")
+        estado = estado.mask(ocupado_raw.eq(1), 1)
+        estado = estado.mask(desocupado_raw.eq(1), 2)
+        estado = estado.mask(inactivo_raw.eq(1), 3)
 
         # ---------------------------------------------------------------------
         # POSICION OCUPACIONAL
@@ -1400,13 +1413,15 @@ def build_core(
                 .eq(1)
             ).astype(int)
 
-            out["formal"] = (
+            out["formal"] = normalize_binary(
+                out["ocupado"].eq(1)
+                &
                 pd.to_numeric(
                     df["EMP_PPAL"],
                     errors="coerce",
                 )
                 .eq(2)
-            ).astype(int)
+            )
 
         else:
 
@@ -1446,8 +1461,10 @@ def build_core(
                 )
             ).astype(int)
 
-            out["formal"] = (
-                1 - out["informal"]
+            out["formal"] = normalize_binary(
+                out["ocupado"].eq(1)
+                &
+                out["informal"].eq(0)
             )
 
     elif country == "brasil":
@@ -1476,16 +1493,19 @@ def build_core(
             )
         ).astype(int)
 
-        out["formal"] = (
-            1 - out["informal"]
+        out["formal"] = normalize_binary(
+            out["ocupado"].eq(1)
+            &
+            out["informal"].eq(0)
         )
 
     else:
 
         no_ss = (
-            (
-                df.get("P6920", 0) == 2
-            )
+            pd.to_numeric(
+                df.get("P6920", pd.Series(pd.NA, index=df.index)),
+                errors="coerce",
+            ).eq(2)
             if country == "colombia"
             else reg_no
         )
@@ -1506,8 +1526,10 @@ def build_core(
             )
         ).astype(int)
 
-        out["formal"] = (
-            1 - out["informal"]
+        out["formal"] = normalize_binary(
+            out["ocupado"].eq(1)
+            &
+            out["informal"].eq(0)
         )
 
     # =========================================================================

@@ -66,6 +66,9 @@ def weighted_sum(df: pd.DataFrame, columns: list[str] | None) -> float:
     if columns is None:
         return float(df["ponderador"].sum())
 
+    if not set(columns).issubset(df.columns):
+        return pd.NA
+
     mask = df[columns].sum(axis=1).gt(0)
 
     return float(df.loc[mask, "ponderador"].sum())
@@ -222,6 +225,7 @@ def quarterly_indicators(df: pd.DataFrame) -> pd.DataFrame:
         base = dict(zip(group_cols, keys))
 
         for indicator, columns in INDICATORS.items():
+            available = columns is None or set(columns).issubset(group.columns)
             rows.append(
                 {
                     **base,
@@ -230,7 +234,17 @@ def quarterly_indicators(df: pd.DataFrame) -> pd.DataFrame:
                     "casos_sin_ponderar": (
                         int(len(group))
                         if columns is None
-                        else int(group[columns].sum(axis=1).gt(0).sum())
+                        else (
+                            int(group[columns].sum(axis=1).gt(0).sum())
+                            if available
+                            else pd.NA
+                        )
+                    ),
+                    "estado_dato": "ok" if available else "variable_ausente",
+                    "observacion": (
+                        pd.NA
+                        if available
+                        else "La variable no posee informacion para ese trimestre."
                     ),
                 }
             )
@@ -248,6 +262,18 @@ def quarterly_distributions(df: pd.DataFrame) -> pd.DataFrame:
 
         for variable in DISTRIBUTIONS:
             if variable not in group.columns:
+                rows.append(
+                    {
+                        **base,
+                        "dimension": variable,
+                        "categoria": pd.NA,
+                        "valor_ponderado": pd.NA,
+                        "casos_sin_ponderar": pd.NA,
+                        "pct": pd.NA,
+                        "estado_dato": "variable_ausente",
+                        "observacion": "La variable no posee informacion para ese trimestre.",
+                    }
+                )
                 continue
 
             tmp = group.copy()
@@ -264,6 +290,8 @@ def quarterly_distributions(df: pd.DataFrame) -> pd.DataFrame:
                         "valor_ponderado": value,
                         "casos_sin_ponderar": int(len(subset)),
                         "pct": value / total if total else pd.NA,
+                        "estado_dato": "ok",
+                        "observacion": pd.NA,
                     }
                 )
 
@@ -279,6 +307,12 @@ def annual_from_quarters(quarterly: pd.DataFrame, keys: list[str]) -> pd.DataFra
 
     if "pct" in quarterly.columns:
         value_cols.append("pct")
+
+    metadata_cols = [
+        column
+        for column in ["estado_dato", "observacion"]
+        if column in quarterly.columns
+    ]
 
     base_period_counts = (
         quarterly
@@ -319,7 +353,23 @@ def annual_from_quarters(quarterly: pd.DataFrame, keys: list[str]) -> pd.DataFra
         )
     )
 
-    complete_quarterly[value_cols] = complete_quarterly[value_cols].fillna(0)
+    missing_row = complete_quarterly["valor_ponderado"].isna()
+    missing_variable = (
+        complete_quarterly["estado_dato"].eq("variable_ausente")
+        if "estado_dato" in complete_quarterly.columns
+        else pd.Series(False, index=complete_quarterly.index)
+    )
+    absent_category = missing_row & ~missing_variable
+
+    complete_quarterly.loc[absent_category, value_cols] = (
+        complete_quarterly.loc[absent_category, value_cols].fillna(0)
+    )
+    if "estado_dato" in complete_quarterly.columns:
+        complete_quarterly.loc[absent_category, "estado_dato"] = "categoria_ausente"
+    if "observacion" in complete_quarterly.columns:
+        complete_quarterly.loc[absent_category, "observacion"] = (
+            "Categoria con frecuencia cero en el trimestre."
+        )
 
     annual = (
         complete_quarterly
@@ -341,6 +391,33 @@ def annual_from_quarters(quarterly: pd.DataFrame, keys: list[str]) -> pd.DataFra
         how="left",
         validate="one_to_one",
     )
+
+    if metadata_cols:
+        annual_status = (
+            complete_quarterly
+            .groupby(group_cols, dropna=False)
+            .agg(
+                trimestres_con_dato=("valor_ponderado", lambda s: int(s.notna().sum())),
+                trimestres_variable_ausente=(
+                    "estado_dato",
+                    lambda s: int(s.eq("variable_ausente").sum()),
+                ),
+                observacion=(
+                    "observacion",
+                    lambda s: " | ".join(
+                        sorted({str(value) for value in s.dropna() if str(value)})
+                    )
+                    or pd.NA,
+                ),
+            )
+            .reset_index()
+        )
+        annual = annual.merge(
+            annual_status,
+            on=group_cols,
+            how="left",
+            validate="one_to_one",
+        )
 
     return annual
 
