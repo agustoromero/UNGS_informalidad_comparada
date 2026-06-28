@@ -16,6 +16,17 @@ MERGE_KEYS_MX = [
 ]
 
 
+def mexico_merge_keys(*frames: pd.DataFrame) -> list[str]:
+
+    keys = list(MERGE_KEYS_MX)
+
+    for column in ["tipo", "mes_cal"]:
+        if all(column in frame.columns for frame in frames):
+            keys.append(column)
+
+    return keys
+
+
 COMMON_COLUMNS = [
     "pais",
     "anio",
@@ -463,12 +474,14 @@ def load_period(country: str, src, year=None):
             low_memory=False,
         )
 
+        merge_keys = mexico_merge_keys(a, b)
+
         dup_a = a.duplicated(
-            MERGE_KEYS_MX
+            merge_keys
         ).sum()
 
         dup_b = b.duplicated(
-            MERGE_KEYS_MX
+            merge_keys
         ).sum()
 
         if dup_a > 0:
@@ -484,9 +497,9 @@ def load_period(country: str, src, year=None):
             )
         merged = a.merge(
          b,
-         on=MERGE_KEYS_MX,
+         on=merge_keys,
          how="inner",
-         validate="many_to_many",
+         validate="one_to_one",
          )
 
         # -------------------------------------------------------------
@@ -507,10 +520,12 @@ def load_period(country: str, src, year=None):
           encoding="latin1",
          )
 
+         sdemt_merge_keys = mexico_merge_keys(merged, sdemt)
+
          keep = [
              c
              for c in [
-                 *MERGE_KEYS_MX,
+                 *sdemt_merge_keys,
                  "clase1",
                  "clase2",
                  "pos_ocu",
@@ -538,7 +553,7 @@ def load_period(country: str, src, year=None):
 
          merged = merged.merge(
              sdemt,
-             on=MERGE_KEYS_MX,
+             on=sdemt_merge_keys,
              how="left",
          )
 
@@ -798,8 +813,18 @@ def build_core(
 
     elif country == "mexico":
 
+        mexico_id_keys = [
+            c
+            for c in [
+                *MERGE_KEYS_MX,
+                "tipo",
+                "mes_cal",
+            ]
+            if c in df.columns
+        ]
+
         df["id"] = (
-            df[MERGE_KEYS_MX]
+            df[mexico_id_keys]
             .astype(str)
             .agg("_".join, axis=1)
         )
@@ -962,7 +987,7 @@ def build_core(
             first_numeric(df, ["niv_ins", "NIV_INS"]).ge(4)
         )
 
-        empleo_domestico = sector_mx.eq(6) | first_numeric(df, ["domestico"]).eq(1)
+        empleo_domestico = sector_mx.eq(6)
         asalariado_publico = cat.eq(1) & sector_mx.eq(4) & ~empleo_domestico
         asalariado_privado = cat.eq(1) & sector_mx.isin([1, 2, 3, 5, 7]) & ~empleo_domestico
         patron = cat.eq(2)
@@ -1183,6 +1208,27 @@ def build_core(
 
         out["inactivo"] = (
             estado.isna()
+        ).astype(int)
+
+    elif country == "colombia":
+
+        estado = pd.to_numeric(
+            estado,
+            errors="coerce",
+        )
+
+        out["ocupado"] = (
+            estado.eq(1)
+        ).astype(int)
+
+        out["desocupado"] = (
+            estado.eq(2)
+        ).astype(int)
+
+        out["inactivo"] = (
+            ~out["ocupado"].astype(bool)
+            &
+            ~out["desocupado"].astype(bool)
         ).astype(int)
 
     else:

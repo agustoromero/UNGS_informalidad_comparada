@@ -75,6 +75,11 @@ def audit_file(path: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
 
     df = pd.read_parquet(path)
     country, year = path.stem.rsplit("_", 1)
+    activity_cols = ["ocupado", "desocupado", "inactivo"]
+    has_activity = set(activity_cols).issubset(df.columns)
+    identity = df[activity_cols].sum(axis=1) if has_activity else pd.Series(pd.NA, index=df.index)
+    has_weight = "ponderador" in df.columns
+    has_id = {"anio", "trimestre", "id"}.issubset(df.columns)
 
     summary = {
         "archivo": str(path),
@@ -82,13 +87,27 @@ def audit_file(path: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
         "anio": int(year),
         "registros": int(len(df)),
         "columnas": int(df.shape[1]),
-        "ponderador_suma": float(df["ponderador"].sum()) if "ponderador" in df else pd.NA,
-        "ponderador_missing": int(df["ponderador"].isna().sum()) if "ponderador" in df else pd.NA,
-        "id_duplicados_trimestre": (
-            int(df.duplicated(["anio", "trimestre", "id"], keep=False).sum())
-            if {"anio", "trimestre", "id"}.issubset(df.columns)
+        "id_unicos_trimestre": (
+            int(df[["anio", "trimestre", "id"]].drop_duplicates().shape[0])
+            if has_id
             else pd.NA
         ),
+        "id_duplicados_trimestre": (
+            int(df.duplicated(["anio", "trimestre", "id"], keep=False).sum())
+            if has_id
+            else pd.NA
+        ),
+        "ponderador_suma": float(df["ponderador"].sum()) if has_weight else pd.NA,
+        "ponderador_media": float(df["ponderador"].mean()) if has_weight else pd.NA,
+        "ponderador_min": float(df["ponderador"].min()) if has_weight else pd.NA,
+        "ponderador_max": float(df["ponderador"].max()) if has_weight else pd.NA,
+        "ponderador_missing": int(df["ponderador"].isna().sum()) if has_weight else pd.NA,
+        "ponderador_no_positivo": int(df["ponderador"].le(0).sum()) if has_weight else pd.NA,
+        "ocupados": int(df["ocupado"].sum()) if "ocupado" in df else pd.NA,
+        "desocupados": int(df["desocupado"].sum()) if "desocupado" in df else pd.NA,
+        "inactivos": int(df["inactivo"].sum()) if "inactivo" in df else pd.NA,
+        "identidad_actividad_ok": bool(identity.eq(1).all()) if has_activity else pd.NA,
+        "identidad_actividad_fallas": int(identity.ne(1).sum()) if has_activity else pd.NA,
     }
 
     rows = []
@@ -96,6 +115,15 @@ def audit_file(path: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
         series = df[column]
         non_null = int(series.notna().sum())
         unique = int(series.nunique(dropna=True))
+        numeric = pd.to_numeric(series, errors="coerce")
+        numeric_non_null = numeric.notna().sum()
+        is_numeric = numeric_non_null > 0 and numeric_non_null >= non_null * 0.95
+        is_binary_var = column in BINARY_VARS
+        anomalous_binary = (
+            bool(~series.dropna().isin([0, 1]).all())
+            if is_binary_var
+            else False
+        )
         rows.append(
             {
                 "archivo": path.name,
@@ -109,6 +137,15 @@ def audit_file(path: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
                 "n_unicos": unique,
                 "vacia": non_null == 0,
                 "constante": unique <= 1,
+                "media": float(numeric.mean()) if is_numeric else pd.NA,
+                "min": float(numeric.min()) if is_numeric else pd.NA,
+                "max": float(numeric.max()) if is_numeric else pd.NA,
+                "binaria_anomala": anomalous_binary,
+                "categorias": (
+                    "|".join(map(str, sorted(series.dropna().unique().tolist(), key=str)[:30]))
+                    if unique <= 30
+                    else "MAS_DE_30"
+                ),
             }
         )
 
@@ -152,11 +189,14 @@ def audit_distributions(df: pd.DataFrame) -> pd.DataFrame:
                     }
                 )
 
-        for variable in ["sexo", "nivel_educativo"]:
+        for variable in DISTRIBUTIONS:
             if variable not in group.columns:
                 continue
 
-            for category, subset in group.groupby(variable, dropna=False):
+            tmp = group.copy()
+            tmp[variable] = tmp[variable].astype("string").fillna("Sin dato")
+
+            for category, subset in tmp.groupby(variable, dropna=False):
                 rows.append(
                     {
                         "pais": pais,
@@ -324,6 +364,66 @@ def annual_variation(annual: pd.DataFrame, keys: list[str]) -> pd.DataFrame:
     return wide
 
 
+def subset_dimension(table: pd.DataFrame, dimension: str) -> pd.DataFrame:
+
+    if "dimension" not in table.columns:
+        return table.iloc[0:0].copy()
+
+    return table[table["dimension"].eq(dimension)].copy()
+
+
+def write_documentation(
+    out_dir: Path,
+    audit_summary: pd.DataFrame,
+    audit_variables: pd.DataFrame,
+) -> None:
+
+    limitations = []
+
+    if "identidad_actividad_fallas" in audit_summary:
+        failures = int(audit_summary["identidad_actividad_fallas"].fillna(0).sum())
+        limitations.append(
+            f"- Identidad ocupado + desocupado + inactivo: {failures} fallas."
+        )
+
+    limitations.append(
+        "- Colombia 2018: los parquets limpios no contienen CLASE; el filtro urbano no se aplica y se conserva el conjunto disponible."
+    )
+    limitations.append(
+        "- Colombia 2023: sexo, edad y educacion se enriquecen desde el modulo Caracteristicas generales; P3069 se usa como reemplazo de P6870 para tamano de establecimiento cuando P6870 no esta disponible."
+    )
+    limitations.append(
+        "- Los promedios anuales se calculan como promedio simple de los cuatro trimestres. Categorias ausentes en un trimestre se imputan como cero antes de promediar."
+    )
+
+    demographic_missing = audit_variables[
+        audit_variables["variable"].isin(DISTRIBUTIONS)
+        & audit_variables["missing"].gt(0)
+    ]
+
+    for _, row in demographic_missing.iterrows():
+        limitations.append(
+            "- Faltantes demograficos: "
+            f"{row['pais']} {int(row['anio'])} {row['variable']} "
+            f"{int(row['missing'])} casos ({row['missing_pct']:.4%})."
+        )
+
+    text = "\n".join(
+        [
+            "# Documentacion breve - ETAPA 2",
+            "",
+            "Equivalencias y criterios metodologicos:",
+            *limitations,
+            "",
+        ]
+    )
+
+    (out_dir / "documentacion_metodologica_breve.md").write_text(
+        text,
+        encoding="utf-8",
+    )
+
+
 def write_outputs(
     audit_summary: pd.DataFrame,
     audit_variables: pd.DataFrame,
@@ -351,8 +451,24 @@ def write_outputs(
         "cuadros_anuales_distribuciones_variacion.csv": annual_distribution_variation,
     }
 
+    for dimension in DISTRIBUTIONS:
+        outputs[f"cuadros_trimestrales_{dimension}.csv"] = subset_dimension(
+            q_distributions,
+            dimension,
+        )
+        outputs[f"cuadros_anuales_{dimension}.csv"] = subset_dimension(
+            annual_distributions,
+            dimension,
+        )
+        outputs[f"cuadros_anuales_{dimension}_variacion.csv"] = subset_dimension(
+            annual_distribution_variation,
+            dimension,
+        )
+
     for name, table in outputs.items():
         table.to_csv(out_dir / name, index=False, encoding="utf-8-sig")
+
+    write_documentation(out_dir, audit_summary, audit_variables)
 
     with pd.ExcelWriter(out_dir / "auditoria_y_cuadros.xlsx", engine="openpyxl") as writer:
         for name, table in outputs.items():
