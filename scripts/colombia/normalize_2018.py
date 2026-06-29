@@ -22,6 +22,11 @@ MONTH_TO_Q = {
     "Diciembre": 4,
 }
 
+EXPECTED_MONTHS_BY_Q = {
+    quarter: {month for month, value in MONTH_TO_Q.items() if value == quarter}
+    for quarter in [1, 2, 3, 4]
+}
+
 KEYS = [
     "DIRECTORIO",
     "SECUENCIA_P",
@@ -171,7 +176,15 @@ def normalize():
             raise FileNotFoundError(f"Sin meses para Colombia 2018 T{quarter}")
 
         df = pd.concat(quarter_frames[quarter], ignore_index=True)
-        months = df["MES_NOMBRE"].nunique()
+        observed_months = set(df["MES_NOMBRE"].dropna().unique())
+        expected_months = EXPECTED_MONTHS_BY_Q[quarter]
+        if observed_months != expected_months:
+            raise ValueError(
+                f"Colombia 2018 T{quarter}: trimestre incompleto. "
+                f"Esperados={sorted(expected_months)}; observados={sorted(observed_months)}"
+            )
+
+        months = len(expected_months)
         df["FEX_DPTO_C"] = (
             pd.to_numeric(
                 df["fex_c_2011"].astype(str).str.replace(",", ".", regex=False),

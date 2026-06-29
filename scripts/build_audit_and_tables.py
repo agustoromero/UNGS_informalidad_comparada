@@ -1,4 +1,5 @@
 from pathlib import Path
+import warnings
 
 import pandas as pd
 
@@ -354,11 +355,46 @@ def annual_from_quarters(quarterly: pd.DataFrame, keys: list[str]) -> pd.DataFra
     )
 
     missing_row = complete_quarterly["valor_ponderado"].isna()
-    missing_variable = (
-        complete_quarterly["estado_dato"].eq("variable_ausente")
-        if "estado_dato" in complete_quarterly.columns
-        else pd.Series(False, index=complete_quarterly.index)
-    )
+    missing_variable = pd.Series(False, index=complete_quarterly.index)
+
+    if "estado_dato" in complete_quarterly.columns:
+        missing_variable = complete_quarterly["estado_dato"].eq("variable_ausente")
+
+        distribution_keys = {"dimension", "categoria"}
+        if distribution_keys.issubset(keys):
+            absent_periods = (
+                quarterly.loc[
+                    quarterly["estado_dato"].eq("variable_ausente"),
+                    ["pais", "anio", "trimestre", "dimension"],
+                ]
+                .drop_duplicates()
+                .assign(_periodo_variable_ausente=True)
+            )
+            complete_quarterly = complete_quarterly.merge(
+                absent_periods,
+                on=["pais", "anio", "trimestre", "dimension"],
+                how="left",
+                validate="many_to_one",
+            )
+            missing_variable = (
+                missing_variable
+                | complete_quarterly["_periodo_variable_ausente"].fillna(False)
+            )
+            complete_quarterly = complete_quarterly.drop(
+                columns=["_periodo_variable_ausente"]
+            )
+
+    if "estado_dato" in complete_quarterly.columns:
+        complete_quarterly.loc[
+            missing_row & missing_variable,
+            "estado_dato",
+        ] = "variable_ausente"
+    if "observacion" in complete_quarterly.columns:
+        complete_quarterly.loc[
+            missing_row & missing_variable & complete_quarterly["observacion"].isna(),
+            "observacion",
+        ] = "La variable no posee informacion para ese trimestre."
+
     absent_category = missing_row & ~missing_variable
 
     complete_quarterly.loc[absent_category, value_cols] = (
@@ -418,6 +454,35 @@ def annual_from_quarters(quarterly: pd.DataFrame, keys: list[str]) -> pd.DataFra
             how="left",
             validate="one_to_one",
         )
+
+    invalid_annual = (
+        complete_quarterly
+        .groupby(group_cols, dropna=False)["valor_ponderado"]
+        .apply(lambda s: bool(s.isna().any()))
+        .reset_index(name="_annual_invalido_por_na")
+    )
+    annual = annual.merge(
+        invalid_annual,
+        on=group_cols,
+        how="left",
+        validate="one_to_one",
+    )
+
+    invalid_mask = annual["_annual_invalido_por_na"].fillna(False)
+    if invalid_mask.any():
+        invalid_records = annual.loc[
+            invalid_mask,
+            [*group_cols, "periodos_promediados"],
+        ].to_dict(orient="records")
+        warnings.warn(
+            "No se calculo promedio anual para series con variables ausentes o "
+            f"informacion trimestral no utilizable: {invalid_records}",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        annual.loc[invalid_mask, value_cols] = pd.NA
+
+    annual = annual.drop(columns=["_annual_invalido_por_na"])
 
     return annual
 

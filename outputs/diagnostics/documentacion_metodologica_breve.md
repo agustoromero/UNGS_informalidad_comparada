@@ -7,6 +7,4 @@ Equivalencias y criterios metodologicos:
 - Los promedios anuales se calculan como promedio simple de los cuatro trimestres. Categorias ausentes en un trimestre se imputan como cero antes de promediar.
 - Faltantes demograficos: brasil 2018 nivel_educativo 98935 casos (6.1392%).
 - Faltantes demograficos: brasil 2023 nivel_educativo 77035 casos (5.5277%).
-- Faltantes demograficos: mexico 2023 sexo 1213 casos (0.0784%).
-- Faltantes demograficos: mexico 2023 edad 1213 casos (0.0784%).
-- Faltantes demograficos: colombia 2023 nivel_educativo 4 casos (0.0012%).
+- Faltantes demograficos: colombia 2023 nivel_educativo 19 casos (0.0032%).

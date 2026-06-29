@@ -26,6 +26,11 @@ MONTH_TO_TRIM = {
     "Diciembre": 4,
 }
 
+EXPECTED_MONTHS_BY_TRIM = {
+    trim: {month for month, value in MONTH_TO_TRIM.items() if value == trim}
+    for trim in [1, 2, 3, 4]
+}
+
 MERGE_KEYS = [
     "DIRECTORIO",
     "SECUENCIA_P",
@@ -79,8 +84,7 @@ for month, trim in MONTH_TO_TRIM.items():
 
     folder = next((p for p in possible if p.exists()), None)
     if folder is None:
-        print(f"[ERROR] no existe carpeta para {month}")
-        continue
+        raise FileNotFoundError(f"No existe carpeta para Colombia 2023 {month}")
 
     ft = read_module(folder / "Fuerza de trabajo.CSV")
     ocupados = read_module(folder / "Ocupados.CSV")
@@ -122,11 +126,22 @@ for month, trim in MONTH_TO_TRIM.items():
     frames[trim].append(df)
 
 for trim in [1, 2, 3, 4]:
+    if not frames[trim]:
+        raise FileNotFoundError(f"Sin meses para Colombia 2023 T{trim}")
+
     out = pd.concat(
         frames[trim],
         ignore_index=True,
     )
-    months = out["MES_NOMBRE"].nunique()
+    observed_months = set(out["MES_NOMBRE"].dropna().unique())
+    expected_months = EXPECTED_MONTHS_BY_TRIM[trim]
+    if observed_months != expected_months:
+        raise ValueError(
+            f"Colombia 2023 T{trim}: trimestre incompleto. "
+            f"Esperados={sorted(expected_months)}; observados={sorted(observed_months)}"
+        )
+
+    months = len(expected_months)
     out["FEX_C18"] = (
         pd.to_numeric(out["FEX_C18"], errors="coerce")
         / months
