@@ -1,0 +1,362 @@
+
+<h2 style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);">Estructura ocupacional por pais, categoria y ambito</h2>
+<style>
+  * { font-family:'Gill Sans MT','Gill Sans','GillSans','Optima','Trebuchet MS','Calibri',sans-serif; box-sizing:border-box; }
+  .outer { background:#fff; padding:1rem 0 0.5rem; }
+  .ctrl-label { font-size:11px; letter-spacing:0.06em; color:#3a3020; font-weight:500; text-transform:uppercase; margin-bottom:5px; }
+  .tag-row { display:flex; flex-wrap:wrap; gap:5px; margin-bottom:8px; }
+  .tag { font-size:11px; padding:3px 10px; border-radius:99px; cursor:pointer; border:1.5px solid; user-select:none; transition:opacity 0.15s; background:#fff; }
+  .tag.off { opacity:0.26; }
+  .btn-reset { font-size:11px; padding:3px 12px; border-radius:99px; border:1.5px solid #b09070; background:#f5f0e8; color:#7a5a30; cursor:pointer; margin-left:8px; transition:background 0.12s; }
+  .btn-reset:hover { background:#ede4d0; }
+  .top-row { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; }
+  .top-left { flex:1; min-width:0; }
+  .ambito-wrap { display:flex; flex-direction:column; align-items:flex-end; gap:4px; padding-top:2px; }
+  .ambito-label { font-size:11px; letter-spacing:0.06em; color:#3a3020; font-weight:500; text-transform:uppercase; }
+  .ambito-select { font-family:'Gill Sans MT','Gill Sans','GillSans','Optima','Trebuchet MS',sans-serif; font-size:12px; padding:4px 10px; border-radius:6px; border:1.5px solid #b09070; background:#f5f0e8; color:#3a3020; cursor:pointer; appearance:none; -webkit-appearance:none; padding-right:24px; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%237a5a30'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right 8px center; }
+  .chart-wrap { position:relative; width:100%; background:#fff; }
+  .legend-row { display:flex; flex-wrap:wrap; gap:8px 16px; margin-top:10px; margin-bottom:8px; }
+  .leg-item { display:flex; align-items:center; gap:6px; font-size:11px; color:#4a4030; }
+  .notas { margin-top:8px; border-top:1px solid rgba(180,160,120,0.3); padding-top:8px; }
+  .nota-ref { font-size:9.5px; color:#7a6a50; line-height:1.5; margin-bottom:3px; }
+  .tooltip-box { position:fixed; background:#fff; border:0.5px solid rgba(160,140,100,0.5); border-radius:6px; padding:7px 11px; font-size:11.5px; pointer-events:none; display:none; white-space:nowrap; z-index:100; color:#2b2010; }
+</style>
+
+<div class="outer">
+  <div class="top-row">
+    <div class="top-left">
+      <div style="display:flex;align-items:center;margin-bottom:4px;">
+        <div class="ctrl-label" style="margin-bottom:0;">Categoria</div>
+        <button class="btn-reset" id="btn-reset-cat">Ver todas</button>
+      </div>
+      <div class="tag-row" id="cat-tags"></div>
+    </div>
+    <div class="ambito-wrap">
+      <div class="ambito-label">Ambito</div>
+      <select class="ambito-select" id="ambito-select">
+        <option value="total">Total</option>
+        <option value="urbano" selected>Urbano</option>
+        <option value="rural">Rural</option>
+      </select>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;margin-bottom:4px;margin-top:2px;">
+    <div class="ctrl-label" style="margin-bottom:0;">Pais</div>
+    <button class="btn-reset" id="btn-reset-country">Ver todos</button>
+  </div>
+  <div class="tag-row" id="country-tags"></div>
+  <div class="chart-wrap" id="chart-wrap">
+    <canvas id="chart"></canvas>
+  </div>
+  <div class="tooltip-box" id="tooltip"></div>
+  <div class="legend-row" id="legend-row"></div>
+  <div class="notas" id="notas-section"></div>
+</div>
+
+<script>
+const FONT = "'Gill Sans MT','Gill Sans','GillSans','Optima','Trebuchet MS','Calibri',sans-serif";
+const TEXT_COLOR = '#4a4030';
+
+const COUNTRY_META = [
+  { id:'PER', label:'Peru' },
+  { id:'MEX', label:'Mexico' },
+  { id:'BRA', label:'Brasil' },
+  { id:'ARG', label:'Argentina' },
+  { id:'GRE', label:'Grecia' },
+  { id:'ESP', label:'Espana' },
+  { id:'ITA', label:'Italia' },
+  { id:'RUM', label:'Rumania' },
+  { id:'POR', label:'Portugal' },
+  { id:'SRB', label:'Serbia' },
+  { id:'POL', label:'Polonia' },
+  { id:'SVK', label:'Slovakia' },
+  { id:'HRV', label:'Croacia' },
+  { id:'BGR', label:'Bulgaria' },
+  { id:'FRA', label:'Francia' },
+  { id:'CZE', label:'Chequia' },
+  { id:'AUT', label:'Austria' },
+  { id:'EST', label:'Estonia' },
+  { id:'CHE', label:'Suiza' },
+  { id:'NLD', label:'P. Bajos (i)' },
+  { id:'NOR', label:'Noruega (i)' },
+  { id:'FIN', label:'Finlandia (i)' },
+  { id:'SWE', label:'Suecia (i)(ii)' },
+  { id:'DNK', label:'Dinamarca (i)' },
+  { id:'DEU', label:'Alemania' },
+  { id:'BEL', label:'Belgica' },
+  { id:'USA', label:'EEUU (iii)' },
+];
+
+const COL = {USA:0,DEU:1,POL:2,FRA:3,BEL:4,NLD:5,CHE:6,AUT:7,CZE:8,POR:9,ESP:10,ITA:11,GRE:12,BGR:13,HRV:14,RUM:15,SRB:16,SVK:17,EST:18,NOR:19,FIN:20,SWE:21,DNK:22,ARG:23,BRA:24,MEX:25,PER:26};
+
+const CATS = [
+  { key:'Patrones',        short:'Patrones',               shape:'diamond', color:'#7a7a7a', border:'#4a4a4a' },
+  { key:'AutonProf',       short:'Auton. Profesional',     shape:'diamond', color:'#1a1a1a', border:'#000000' },
+  { key:'AsalPriv',        short:'Asal. Privados',         shape:'diamond', color:'#2b5480', border:'#1a3550' },
+  { key:'AsalPub',         short:'Asal. Publicos',         shape:'diamond', color:'#6a9cc0', border:'#3a6a8a' },
+  { key:'PatMicro',        short:'Patrones (Micro)',        shape:'circle',  color:'#b8860b', border:'#1a1a1a' },
+  { key:'AsalMicro',       short:'Asal. Privados (Micro)', shape:'circle',  color:'#c9a227', border:'#c0c0c0' },
+  { key:'AutonNoprof',     short:'Auton. no profesional',  shape:'circle',  color:'#8b2a2a', border:'#5a1010' },
+  { key:'EmpDom',          short:'Empleo domestico',       shape:'rect',    color:'#1a1a1a', border:'#a0a0a0' },
+  { key:'TrabFam',         short:'Trabajo Familiar',       shape:'circle',  color:'#5a7a3a', border:'#2a4a10' },
+  { key:'AsalMicroEmpDom', short:'Asal. Micro + Emp. Dom.',shape:'rect',    color:'#c9a227', border:'#c0c0c0' },
+  { key:'SectorInformal',  short:'Sector Informal',        shape:'baton',   color:'#b8a020', border:'#7a6600' },
+  { key:'SectorFormal',    short:'Sector Formal',          shape:'baton',   color:'#2b5480', border:'#1a3550' },
+];
+
+const RAW = {
+  total:{
+    Patrones:       [0.9,1.7,0.7,0.4,1.4,1.3,0.4,0.7,0.8,0.3,1.2,1.0,1.2,1.0,0.8,0.3,0.9,0.6,1.5,0.2,1.4,1.3,0.9,null,1.1,0.8,0.5],
+    AutonProf:      [1.5,1.9,2.3,3.6,3.9,4.8,2.1,2.1,3.5,2.2,2.3,3.5,3.2,0.9,0.7,0.4,0.7,2.9,1.7,1.3,2.4,2.0,2.1,null,3.1,2.5,4.5],
+    AsalPriv:       [64.8,62.7,46.4,53.9,48.4,66.3,53.6,56.6,37.1,49.2,44.6,44.2,26.7,56.9,43.9,56.5,41.5,41.0,51.8,47.7,45.9,53.5,41.0,null,36.1,33.9,24.3],
+    AsalPub:        [15.8,17.9,25.3,19.3,31.5,7.8,20.4,21.6,35.0,21.8,22.0,18.5,32.9,21.6,32.0,15.3,29.2,28.1,26.0,34.5,29.4,28.8,39.3,null,11.0,10.6,8.5],
+    PatMicro:       [2.7,2.7,2.5,1.0,1.7,2.0,1.7,3.1,1.9,2.3,3.3,4.3,4.8,2.5,4.3,0.6,3.1,1.8,2.6,0.6,2.7,2.5,1.9,null,3.9,4.7,3.0],
+    AsalMicro:      [10.0,10.8,8.6,13.8,8.3,10.6,18.8,11.7,9.1,18.3,18.6,18.6,15.4,11.9,13.6,10.4,16.5,16.2,12.0,13.5,13.8,8.8,13.5,null,15.8,17.9,17.8],
+    AutonNoprof:    [4.3,2.3,12.9,7.8,4.5,7.0,2.8,4.1,12.1,5.9,7.7,9.4,14.4,4.9,4.6,14.5,7.0,9.5,4.3,2.1,4.4,2.8,1.3,null,20.8,20.9,31.2],
+    EmpDom:         [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,null,4.8,4.4,2.2],
+    TrabFam:        [0,0.1,1.2,0.1,0.2,0.2,0.1,0.1,0.4,0.1,0.2,0.5,1.4,0.3,0.1,2.0,1.1,0,0,0,0.1,0.1,0.1,null,3.4,4.4,8.0],
+    AsalMicroEmpDom:[10.0,10.8,8.6,13.8,8.3,10.6,18.8,11.7,9.1,18.3,18.6,18.6,15.4,11.9,13.6,10.4,16.5,16.2,12.0,13.5,13.8,8.8,13.5,null,20.6,22.3,20.0],
+    SectorInformal: [17.1,15.9,25.2,22.7,14.8,19.7,23.5,19.0,23.6,26.6,29.9,32.8,36.0,19.6,22.6,27.5,27.7,27.5,19.0,16.3,21.0,14.3,16.7,null,48.7,52.3,62.2],
+    SectorFormal:   [82.9,84.1,74.8,77.3,85.2,80.3,76.5,81.0,76.4,73.4,70.1,67.2,64.0,80.4,77.4,72.5,72.3,72.5,81.0,83.7,79.0,85.7,83.3,null,51.3,47.7,37.8],
+  },
+  urbano:{
+    Patrones:       [0.9,1.7,0.8,0.3,1.4,null,0.4,0.7,0.8,0.3,1.2,0.9,1.4,1.2,0.8,0.3,1.0,0.6,1.5,0.2,1.4,1.3,0.9,0.8,1.2,0.9,0.5],
+    AutonProf:      [1.5,2.1,3.3,4.1,4.1,null,2.4,2.7,4.2,2.5,2.4,3.6,3.9,0.9,1.0,0.5,1.0,2.9,1.7,1.3,2.4,2.0,2.1,2.0,3.5,2.9,5.4],
+    AsalPriv:       [66.0,62.9,49.8,56.6,48.9,null,53.8,58.0,36.4,50.7,45.6,44.9,29.1,59.0,43.9,63.1,40.5,41.0,51.8,47.7,45.9,53.5,41.0,33.9,39.4,37.3,30.3],
+    AsalPub:        [15.2,18.2,29.0,19.5,31.6,null,20.4,21.8,35.5,21.8,22.2,18.6,38.0,20.9,33.4,17.9,31.4,28.1,26.0,34.5,29.4,28.8,39.3,19.6,12.1,12.0,9.1],
+    PatMicro:       [2.4,2.5,2.5,0.9,1.5,null,1.6,3.0,2.0,2.1,3.1,4.0,4.4,2.7,4.6,0.8,3.6,1.8,2.6,0.6,2.7,2.5,1.9,2.4,3.8,4.5,3.2],
+    AsalMicro:      [9.7,10.4,7.6,12.7,8.0,null,18.7,11.2,9.4,17.4,18.6,18.6,14.6,11.1,12.4,9.8,17.7,16.2,12.0,13.5,13.8,8.8,13.5,13.7,14.3,16.5,18.9],
+    AutonNoprof:    [4.2,2.2,6.7,5.8,4.3,null,2.7,2.5,11.3,5.3,6.8,9.0,8.0,4.0,3.9,6.6,4.5,9.5,4.3,2.1,4.4,2.8,1.3,20.7,18.6,18.4,26.2],
+    EmpDom:         [0,0,0,0,0,null,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,6.5,4.8,4.4,2.8],
+    TrabFam:        [0,0.1,0.3,0.1,0.2,null,0.1,0,0.4,0.1,0.2,0.4,0.6,0.2,0,1.0,0.2,0,0,0,0.1,0.1,0.1,0.3,2.2,3.2,3.7],
+    AsalMicroEmpDom:[9.7,10.4,7.6,12.7,8.0,null,18.7,11.2,9.4,17.4,18.6,18.6,14.6,11.1,12.4,9.8,17.7,16.2,12.0,13.5,13.8,8.8,13.5,20.2,19.2,20.9,21.7],
+    SectorInformal: [16.4,15.1,17.1,19.5,14.0,null,23.0,16.7,23.1,24.9,28.7,31.9,27.6,18.0,21.0,18.2,26.1,27.5,19.0,16.3,21.0,14.3,16.7,43.6,43.8,46.9,54.8],
+    SectorFormal:   [83.6,84.9,82.9,80.5,86.0,null,77.0,83.3,76.9,75.1,71.3,68.1,72.4,82.0,79.0,81.8,73.9,72.5,81.0,83.7,79.0,85.7,83.3,56.4,56.2,53.1,45.2],
+  },
+  rural:{
+    Patrones:       [1.1,1.6,0.7,0.4,1.5,null,0.3,0.7,0.7,0.3,1.7,1.2,0.6,0.5,0.8,0.4,0.5,0.6,1.4,0.2,2.0,1.6,0.6,null,0.5,0.4,0.7],
+    AutonProf:      [1.1,1.2,1.0,2.6,2.8,null,1.1,1.0,2.3,1.2,1.7,3.2,1.3,0.7,0.3,0.1,0.2,1.7,1.6,0.4,0.5,1.8,1.6,null,0.9,0.8,2.9],
+    AsalPriv:       [58.7,61.7,41.7,48.8,45.7,null,52.6,54.2,38.4,43.6,37.1,40.8,19.8,50.9,43.9,45.7,43.4,43.8,43.0,39.5,38.8,46.5,40.9,null,20.5,21.1,13.3],
+    AsalPub:        [18.4,16.7,20.3,19.0,31.2,null,20.4,21.3,34.0,22.0,21.0,17.8,18.1,23.9,29.3,11.1,25.1,28.1,29.6,40.3,25.9,27.4,36.1,null,6.0,5.3,7.3],
+    PatMicro:       [3.8,3.4,2.5,1.2,3.0,null,2.2,3.3,1.9,2.7,4.9,5.3,6.0,2.0,3.7,0.4,2.0,1.5,3.5,1.2,5.1,3.2,1.7,null,4.5,5.2,2.6],
+    AsalMicro:      [11.9,12.3,10.0,16.0,9.8,null,19.4,12.6,8.6,21.9,19.0,18.9,17.4,13.9,15.9,11.4,14.2,13.0,15.3,14.1,16.6,12.2,15.8,null,22.6,23.3,15.9],
+    AutonNoprof:    [4.9,2.9,21.4,11.8,5.7,null,3.6,6.6,13.6,8.2,14.3,11.7,32.9,7.4,5.8,27.5,11.8,11.2,5.5,4.3,10.8,7.3,3.4,null,31.5,30.4,40.4],
+    EmpDom:         [0,0,0,0,0,null,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,null,4.8,3.2,1.0],
+    TrabFam:        [0.1,0.2,2.4,0.1,0.3,null,0.4,0.3,0.5,0.1,0.4,1.1,3.9,0.8,0.3,3.5,2.8,0,0.1,0,0.3,0,0,null,8.8,9.1,15.9],
+    AsalMicroEmpDom:[11.9,12.3,10.0,16.0,9.8,null,19.4,12.6,8.6,21.9,19.0,18.9,17.4,13.9,15.9,11.4,14.2,13.0,15.3,14.1,16.6,12.2,15.8,null,27.3,26.5,16.9],
+    SectorInformal: [20.7,18.8,36.3,29.1,18.8,null,25.6,22.7,24.6,32.9,38.6,37.0,60.2,24.0,25.7,42.8,30.8,25.7,24.4,19.6,32.8,22.6,20.8,null,72.1,71.2,75.8],
+    SectorFormal:   [79.3,81.2,63.7,70.9,81.2,null,74.4,77.3,75.4,67.1,61.4,63.0,39.8,76.0,74.3,57.2,69.2,74.3,75.6,80.4,67.2,77.4,79.2,null,27.9,27.6,24.2],
+  }
+};
+
+const SI_TOTAL = {PER:62.2,MEX:52.3,BRA:48.7,ARG:43.6,GRE:36.0,ITA:32.8,ESP:29.9,RUM:27.5,SRB:27.7,POR:26.6,SVK:27.5,POL:25.2,HRV:22.6,FRA:22.7,CZE:23.6,CHE:23.5,FIN:21.0,AUT:19.0,NLD:19.7,BGR:19.6,EST:19.0,USA:17.1,DNK:16.7,NOR:16.3,DEU:15.9,BEL:14.8,SWE:14.3};
+const ALL_IDS = COUNTRY_META.map(c=>c.id);
+const SORTED_IDS = [...ALL_IDS].sort((a,b)=>(SI_TOTAL[b]||0)-(SI_TOTAL[a]||0));
+
+const NOTAS_KEYS = ['i','ii','iii'];
+const NOTAS_TEXT = [
+  'Paises Bajos, Noruega, Finlandia, Suecia y Dinamarca cuentan con datos recabados mediante la tecnica de selected respondent, por lo que la informacion surge de una submuestra.',
+  'En Suecia, los patrones no cuentan con informacion sobre la cantidad de personas que trabajan en el establecimiento, por lo que este se asigno segun el tipo de ocupacion. La clasificacion se realizo a partir de la ocupacion declarada, presumiendose que quienes no se identifican como managers o profesionales corresponden a patrones de menor escala en tanto realizan ellos mismos las actividades no directivas. Como excepcion, se excluyeron de la escala superior a los patrones de alojamiento, comercio y otros servicios, bajo el supuesto de que en dichos rubros se concentran los negocios de escala micro.',
+  'En Estados Unidos, los patrones se identifican mediante la clasificacion ocupacional ISCO, dado que esta informacion no se encuentra disponible en la CPS ASEC. En consecuencia, se asigno la categoria de patron a aquellas ocupaciones cuya actividad principal implica direccion o supervision de otras personas.'
+];
+
+let activeCats = new Set(CATS.map(c=>c.key));
+let activeCountries = new Set(ALL_IDS);
+let dimmedCountries = new Set();
+let currentAmbito = 'urbano';
+
+function labelOf(id){ return COUNTRY_META.find(c=>c.id===id).label; }
+
+function makeLegendSVG(cat){
+  const s=14;
+  const svg=inner=>`<svg width="${s}" height="${s}" viewBox="0 0 14 14" style="flex-shrink:0">${inner}</svg>`;
+  if(cat.shape==='baton') return `<svg width="8" height="18" viewBox="0 0 8 18" style="flex-shrink:0"><rect x="0.75" y="0.75" width="6.5" height="16.5" fill="${cat.color}" stroke="${cat.border}" stroke-width="1.5" rx="1"/></svg>`;
+  if(cat.shape==='rect') return svg(`<rect x="1" y="1" width="12" height="12" fill="${cat.color}" stroke="${cat.border}" stroke-width="1.5" rx="1"/>`);
+  if(cat.shape==='diamond') return svg(`<polygon points="7,1 13,7 7,13 1,7" fill="${cat.color}" stroke="${cat.border}" stroke-width="1.5"/>`);
+  return svg(`<circle cx="7" cy="7" r="6" fill="${cat.color}" stroke="${cat.border}" stroke-width="1.5"/>`);
+}
+
+function buildLegend(){
+  const row=document.getElementById('legend-row');
+  row.innerHTML='';
+  CATS.forEach(cat=>{
+    const item=document.createElement('span');
+    item.className='leg-item';
+    item.innerHTML=makeLegendSVG(cat)+'<span>'+cat.short+'</span>';
+    row.appendChild(item);
+  });
+}
+
+function buildNotas(){
+  const sec=document.getElementById('notas-section');
+  sec.innerHTML='';
+  NOTAS_TEXT.forEach((txt,i)=>{
+    const div=document.createElement('div');
+    div.className='nota-ref';
+    div.innerHTML=`<span style="font-size:9px;color:#9a8060;margin-right:4px;font-style:italic;">${NOTAS_KEYS[i]}.</span>${txt}`;
+    sec.appendChild(div);
+  });
+}
+
+function buildCatTags(){
+  const row=document.getElementById('cat-tags');
+  row.innerHTML='';
+  CATS.forEach(item=>{
+    const t=document.createElement('span');
+    t.className='tag'+(activeCats.has(item.key)?'':' off');
+    t.textContent=item.short;
+    t.style.borderColor=item.border==='#000000'?'#555':item.border;
+    t.style.color=item.border==='#000000'?'#333':(item.border==='#c0c0c0'?'#888':item.border);
+    t.onclick=()=>{
+      if(activeCats.has(item.key)){if(activeCats.size>1)activeCats.delete(item.key);}
+      else activeCats.add(item.key);
+      t.classList.toggle('off',!activeCats.has(item.key));
+      drawChart();
+    };
+    row.appendChild(t);
+  });
+}
+
+function buildCountryTags(){
+  const row=document.getElementById('country-tags');
+  row.innerHTML='';
+  SORTED_IDS.forEach(id=>{
+    const isActive=activeCountries.has(id);
+    const isDimmed=dimmedCountries.has(id);
+    const t=document.createElement('span');
+    t.className='tag'+(isActive?'':' off');
+    t.textContent=labelOf(id);
+    t.style.borderColor='#b09070';
+    t.style.color=isDimmed?'#b0a090':'#7a5a30';
+    t.style.opacity=isActive?(isDimmed?'0.5':'1'):'0.26';
+    t.onclick=()=>{
+      if(!activeCountries.has(id)){activeCountries.add(id);dimmedCountries.delete(id);}
+      else if(!dimmedCountries.has(id)){dimmedCountries.add(id);}
+      else{activeCountries.delete(id);dimmedCountries.delete(id);}
+      buildCountryTags();drawChart();
+    };
+    row.appendChild(t);
+  });
+}
+
+document.getElementById('btn-reset-cat').onclick=()=>{
+  CATS.forEach(c=>activeCats.add(c.key));buildCatTags();drawChart();
+};
+document.getElementById('btn-reset-country').onclick=()=>{
+  ALL_IDS.forEach(c=>{activeCountries.add(c);dimmedCountries.delete(c);});
+  buildCountryTags();drawChart();
+};
+document.getElementById('ambito-select').onchange=function(){
+  currentAmbito=this.value;drawChart();
+};
+
+buildCatTags();buildCountryTags();buildLegend();buildNotas();
+
+const tooltip=document.getElementById('tooltip');
+
+function drawChart(){
+  const data=RAW[currentAmbito];
+  const countries=SORTED_IDS.filter(c=>activeCountries.has(c));
+  const cats=CATS.filter(c=>activeCats.has(c.key));
+  const nC=countries.length;
+  const rowH=28,padL=90,padR=28,padT=28,padB=50;
+  const canvasW=document.getElementById('chart-wrap').offsetWidth||720;
+  const canvasH=padT+nC*rowH+padB;
+  const canvas=document.getElementById('chart');
+  canvas.width=canvasW;canvas.height=canvasH;
+  document.getElementById('chart-wrap').style.height=canvasH+'px';
+  const ctx=canvas.getContext('2d');
+  ctx.clearRect(0,0,canvasW,canvasH);
+  const plotW=canvasW-padL-padR;
+  const maxX=90;
+  function xPos(v){return padL+(v/maxX)*plotW;}
+  function yPos(i){return padT+i*rowH+rowH/2;}
+
+  [0,10,20,30,40,50,60,70,80,90].forEach(t=>{
+    const x=xPos(t);
+    ctx.beginPath();ctx.strokeStyle='rgba(180,160,120,0.18)';ctx.lineWidth=1;
+    ctx.moveTo(x,padT-10);ctx.lineTo(x,padT+nC*rowH);ctx.stroke();
+    ctx.fillStyle=TEXT_COLOR;ctx.font=`11px ${FONT}`;ctx.textAlign='center';
+    ctx.fillText(t+'%',x,padT+nC*rowH+16);
+  });
+
+  ctx.fillStyle=TEXT_COLOR;ctx.font=`11.5px ${FONT}`;ctx.textAlign='center';
+  ctx.fillText('Participacion en el empleo total ('+currentAmbito+')',padL+plotW/2,canvasH-10);
+
+  countries.forEach((id,i)=>{
+    const y=yPos(i);
+    const isDimmed=dimmedCountries.has(id);
+    ctx.fillStyle=isDimmed?'#c0b8a8':TEXT_COLOR;
+    ctx.font=`11px ${FONT}`;ctx.textAlign='right';
+    ctx.fillText(labelOf(id),padL-7,y+4);
+    ctx.beginPath();ctx.strokeStyle='rgba(180,160,120,0.12)';ctx.lineWidth=0.8;
+    ctx.moveTo(padL,y);ctx.lineTo(canvasW-padR,y);ctx.stroke();
+  });
+
+  const hitAreas=[];
+  cats.forEach(cat=>{
+    const vals=data[cat.key];
+    countries.forEach((id,ci)=>{
+      const col=COL[id];
+      const val=vals[col];
+      if(val===null||val===undefined)return;
+      const x=xPos(val),y=yPos(ci);
+      const isDimmed=dimmedCountries.has(id);
+      ctx.save();
+      ctx.fillStyle=isDimmed?'rgba(200,196,190,0.7)':cat.color+'dd';
+      ctx.strokeStyle=isDimmed?'rgba(180,176,170,0.8)':cat.border;
+      if(cat.shape==='baton'){
+        const bw=5,bh=16;ctx.lineWidth=isDimmed?1:1.8;ctx.beginPath();
+        if(ctx.roundRect)ctx.roundRect(x-bw/2,y-bh/2,bw,bh,1);else ctx.rect(x-bw/2,y-bh/2,bw,bh);
+        ctx.fill();ctx.stroke();
+      }else if(cat.shape==='rect'){
+        const r=5.5;ctx.lineWidth=isDimmed?1:1.6;ctx.beginPath();
+        ctx.rect(x-r,y-r,r*2,r*2);ctx.fill();ctx.stroke();
+      }else if(cat.shape==='diamond'){
+        const r=6.5;ctx.lineWidth=isDimmed?1:1.5;ctx.beginPath();
+        ctx.moveTo(x,y-r*1.25);ctx.lineTo(x+r,y);ctx.lineTo(x,y+r*1.25);ctx.lineTo(x-r,y);
+        ctx.closePath();ctx.fill();ctx.stroke();
+      }else{
+        const r=5.5;ctx.lineWidth=isDimmed?1:1.6;ctx.beginPath();
+        ctx.arc(x,y,r,0,Math.PI*2);ctx.fill();ctx.stroke();
+      }
+      ctx.restore();
+      hitAreas.push({x,y,cat:cat.short,country:labelOf(id),val,isDimmed});
+    });
+  });
+  canvas._hitAreas=hitAreas;
+}
+
+const canvas=document.getElementById('chart');
+canvas.addEventListener('mousemove',function(e){
+  const rect=canvas.getBoundingClientRect();
+  const mx=e.clientX-rect.left,my=e.clientY-rect.top;
+  const areas=canvas._hitAreas||[];
+  let found=null;
+  for(const a of areas){if(Math.abs(mx-a.x)<9&&Math.abs(my-a.y)<10){found=a;break;}}
+  if(found&&!found.isDimmed){
+    tooltip.style.display='block';
+    tooltip.style.left=(e.clientX+14)+'px';
+    tooltip.style.top=(e.clientY-30)+'px';
+    tooltip.innerHTML=`<strong>${found.cat}</strong><br>${found.country}: ${found.val.toFixed(1)}%`;
+  }else{tooltip.style.display='none';}
+});
+canvas.addEventListener('mouseleave',()=>{tooltip.style.display='none';});
+canvas.addEventListener('click',function(e){
+  const rect=canvas.getBoundingClientRect();
+  const mx=e.clientX-rect.left,my=e.clientY-rect.top;
+  const countries=SORTED_IDS.filter(c=>activeCountries.has(c));
+  const rowH=28,padT=28,padL=90;
+  countries.forEach((id,i)=>{
+    const y=padT+i*rowH+rowH/2;
+    if(mx<padL&&Math.abs(my-y)<13){
+      if(!dimmedCountries.has(id))dimmedCountries.add(id);
+      else dimmedCountries.delete(id);
+      buildCountryTags();drawChart();
+    }
+  });
+});
+
+setTimeout(drawChart,150);
+window.addEventListener('resize',drawChart);
+</script>

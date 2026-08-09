@@ -1,0 +1,29 @@
+﻿{
+  "output": {
+    "filePath": "repomix-output.md",
+    "style": "markdown"
+  },
+  "ignore": {
+    "customPatterns": [
+      ".git",
+      ".venv",
+      ".venv_old",
+      "data",
+      "raw",
+      "datasets",
+      "output",
+      "outputs",
+      "graphify-out",
+      "*.parquet",
+      "*.feather",
+      "*.rds",
+      "*.dta",
+      "*.sav",
+      "*.xlsx",
+      "*.xls",
+      "*.pdf",
+      "*.mp4",
+      "*.zip"
+    ]
+  }
+}

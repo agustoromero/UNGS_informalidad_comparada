@@ -1,0 +1,65 @@
+# Git
+.git/
+
+# Python
+.venv/
+.venv_old/
+__pycache__/
+.pytest_cache/
+
+# R
+.Rproj.user/
+
+# Datos
+data/
+raw/
+datasets/
+
+# Salidas
+output/
+outputs/
+
+# Archivos grandes
+*.parquet
+*.feather
+*.rds
+*.dta
+*.sav
+*.sqlite
+*.duckdb
+*.db
+
+# Comprimidos
+*.zip
+*.7z
+*.rar
+*.tar
+*.gz
+
+# Videos
+*.mp4
+*.avi
+*.mov
+*.mkv
+
+renv/
+.env/
+
+*.xlsx
+*.xls
+
+*.pdf
+
+# Graphify
+graphify-out/
+
+# Archivos auxiliares generados
+archivos_repo.txt
+
+# Python entornos incrustados
+**/.venv/
+**/.venv_old/
+
+# R temporales
+.Rhistory
+.RData
