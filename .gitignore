@@ -106,3 +106,31 @@ outputs/harmonized/*.csv
 outputs/harmonized/tmp/
 outputs/harmonized/tmp/**
 
+# ── datos sin versionar · 2026-08-09 ───────────────────────────────
+# Su .gitignore ya excluia .csv/.dta/.rds/.sav/.zip; faltaban los Excel.
+*.xlsx
+*.xls
+*.xlsm
+
+# EXCEPCION: docs/ tiene los diccionarios de codigos (CASEN, GEIH, CNAE,
+# ISCO-08). Pesan entre 30 y 300 KB y son la fuente canonica de como se
+# clasifican las variables en cada pais: sin ellos el codigo no se puede
+# interpretar. Son documentacion, no datos.
+!docs/**/*.xlsx
+!docs/**/*.xls
+
+# ── carpetas derivadas y ajenas · 2026-08-09 ───────────────────────
+# Medido: outputs/ 246 MB · otros repos/ 427 MB · graphify-out/ 420 KB
+outputs/
+salidas/
+graphify-out/
+logs/
+
+# 'otros repos/' contiene COPIAS DE OTROS REPOSITORIOS dentro de este.
+# Versionarlas crearia repos anidados (ver ADR 0007) y sumaria 427 MB
+# de codigo que ya vive versionado en su propio lugar.
+otros repos/
+
+# derivados de la ingesta: se regeneran con kc_ingesta.py
+repomix-output.md
+archivos_repo.txt
